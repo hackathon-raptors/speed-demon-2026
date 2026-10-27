@@ -1,0 +1,24 @@
+# Speed Demon 2026 board publisher: pushes board.json to S3 every few seconds so the public
+# /board stays live between runs. Coupled to the board — the board's Wants= pulls it in on
+# start, BindsTo= stops it when the board stops. Do NOT enable it standalone (Restart=always
+# would crash-loop on a reboot before the board writes a feed). Install:
+#   install -m 0644 /opt/speed-demon-2026/board/speeddemon-board-publish.service /etc/systemd/system/
+# then enable only speeddemon-board.
+[Unit]
+Description=Speed Demon 2026 board publisher (board.json -> S3)
+BindsTo=speeddemon-board.service
+After=speeddemon-board.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/speed-demon-2026
+ExecStart=/opt/speed-demon-2026/board/publish.sh /srv/speeddemon/board/public/board.json board 5
+Restart=always
+RestartSec=5
+AllowedCPUs=12-19
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=speeddemon-board.service

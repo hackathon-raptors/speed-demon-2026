@@ -1,0 +1,3 @@
+# These fixtures vendor code on purpose. Keep it even under a global gitignore.
+!node_modules/
+!vendor/

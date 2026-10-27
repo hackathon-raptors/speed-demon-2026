@@ -1,0 +1,8 @@
+# Runtime dependencies. Comments, options and includes are not dependencies.
+-r base.txt
+--index-url https://pypi.org/simple
+requests[socks]>=2.31 ; python_version >= "3.8"
+-e ./localpkg
+-c constraints.txt
+uvloop==0.21.0 \
+    --hash=sha256:0000000000000000000000000000000000000000000000000000000000000000

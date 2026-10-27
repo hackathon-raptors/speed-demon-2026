@@ -1,0 +1,4 @@
+[package]
+edition = "2021"
+name = "memchr"
+version = "2.7.4"

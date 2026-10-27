@@ -1,0 +1,4 @@
+[project]
+name = "localpkg"
+version = "0.1.0"
+dependencies = ["attrs>=23"]

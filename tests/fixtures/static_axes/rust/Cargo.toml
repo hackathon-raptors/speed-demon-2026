@@ -1,0 +1,25 @@
+[package]
+name = "fixture"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = ["crates/local"]
+
+[workspace.dependencies]
+itoa = "1"
+
+[dependencies]
+memchr = "2"
+fast = { package = "fast-float2", version = "0.2" }
+local = { path = "crates/local" }
+gitdep = { git = "https://example.com/gitdep.git" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[build-dependencies]
+cc = "1"

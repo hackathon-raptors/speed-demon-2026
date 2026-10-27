@@ -1,0 +1,45 @@
+# Speed Demon 2026 live board. Install on the scoring box (code tree: /opt/speed-demon-2026):
+#   install -m 0644 /opt/speed-demon-2026/board/speeddemon-board.service /etc/systemd/system/
+#   install -m 0644 /opt/speed-demon-2026/board/speeddemon-board-publish.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now speeddemon-board
+# Enable only the board; the publisher follows it (Wants= pulls it in, BindsTo= stops it with the board).
+# Stop it at code freeze (Nov 2 18:00 UTC) so final scoring has the box to itself:
+#   systemctl disable --now speeddemon-board
+[Unit]
+Description=Speed Demon 2026 live board
+Requires=docker.service
+After=docker.service network-online.target speeddemon-clocks.service
+Wants=network-online.target speeddemon-board-publish.service
+
+[Service]
+Type=notify
+# Root: reading each run's memory.peak needs it, as for run_submission.py.
+User=root
+WorkingDirectory=/opt/speed-demon-2026
+# Not needed with the GitHub App (github_app_id + /etc/speeddemon/github-app.pem); local tests only. Mode 0600.
+# Leading '-': start even if the file is absent.
+EnvironmentFile=-/etc/speeddemon/board.env
+ExecStart=/usr/bin/python3 /opt/speed-demon-2026/board/board.py serve --config /etc/speeddemon/board.json
+Restart=always
+RestartSec=10
+TimeoutStartSec=120
+# The board pings WATCHDOG=1 each cycle while every worker is alive; a hang or a dead worker
+# trips this and systemd restarts us. SIGTERM (not the default SIGABRT) so the board's own
+# clean-shutdown handler runs: kill builds + the run in flight, save_watch, flush the mirror.
+WatchdogSec=120
+WatchdogSignal=SIGTERM
+# On stop the board kills builds and the run in flight; the job is requeued once on the next start.
+KillMode=mixed
+TimeoutStopSec=120
+# The board's own work (git, hashing outputs, the buildx client streaming --load) stays off
+# the P-cores 0-11 that the timed runs use. Run containers get their own cgroups, outside this one.
+AllowedCPUs=12-19
+# A run that floods stderr is buffered by run_submission.run_once; cap the board rather than the box.
+MemoryMax=8G
+OOMPolicy=stop
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

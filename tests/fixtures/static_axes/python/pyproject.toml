@@ -1,0 +1,10 @@
+[project]
+name = "fixture"
+version = "0.1.0"
+dependencies = ["orjson>=3.10", "Requests>=2"]
+
+[project.optional-dependencies]
+dev = ["black"]
+
+[dependency-groups]
+test = ["pytest"]

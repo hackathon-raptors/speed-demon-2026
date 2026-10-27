@@ -1,0 +1,47 @@
+# BuildKit daemon config for the board's builder, passed at creation:
+#   docker buildx create --name speeddemon-builder --driver docker-container \
+#     --driver-opt image=moby/buildkit:v0.34.1 --driver-opt cpuset-cpus=12-19 \
+#     --driver-opt memory=16g --driver-opt memory-swap=16g \
+#     --buildkitd-config board/buildkitd.toml --bootstrap
+# (board.py setup-builder does exactly this.) Changing this file needs the builder
+# recreated: docker buildx rm speeddemon-builder, then board.py setup-builder.
+#
+# Field names are BuildKit's (docs/buildkitd.toml.md, v0.34.1). Sizes count the
+# builder's own cache only; loaded images live in dockerd and are pruned by the
+# board itself (one image per team and track).
+
+[history]
+  # BuildKit's build-history API keeps the complete log and trace of every build.
+  # The board keeps only the last 40 lines of a team's own output, so record none here.
+  # (maxEntries = 0 disables recording from v0.34; maxAge is the fallback for older images.)
+  maxEntries = 0
+  maxAge = 60
+
+[worker.oci]
+  gc = true
+  # Never keep more than this much build cache, whatever the disk looks like.
+  maxUsedSpace = "100GB"
+  # Below this much free disk, gc trims further, down to reservedSpace.
+  minFreeSpace = "150GB"
+  reservedSpace = "10GB"
+  # Steps one build may run at once; the board itself allows at most
+  # builder.max_concurrent (2) builds, and the cpuset caps the cores.
+  max-parallelism = 4
+
+  # Team sources (build contexts) are re-sent on every push; keep them a day.
+  [[worker.oci.gcpolicy]]
+    filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
+    keepDuration = "24h"
+    maxUsedSpace = "10GB"
+
+  # Anything unused for three days, while the cache is above 60 GB.
+  [[worker.oci.gcpolicy]]
+    keepDuration = "72h"
+    maxUsedSpace = "60GB"
+
+  # Base images and team layers, newest kept, under the overall cap.
+  [[worker.oci.gcpolicy]]
+    all = true
+    maxUsedSpace = "100GB"
+    minFreeSpace = "150GB"
+    reservedSpace = "10GB"

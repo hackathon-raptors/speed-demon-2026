@@ -1,0 +1,146 @@
+{
+  "seed": 1,
+  "started": "2026-10-24T15:14:58Z",
+  "tracks": {
+    "a": {
+      "generate_s": 8.9,
+      "inputs_sha256": {
+        "requests.log": "7ec80ba45bceef51ac7f79d3a14521fc6187b2dcb87b5e5542d08063fe5d962a"
+      },
+      "output": "summary.txt",
+      "output_sha256": [
+        "495ca09682b9673ef836a506496177680bb4a3af54255174befddb1f83481cd3"
+      ],
+      "gates": {
+        "correctness": true,
+        "timeout": true,
+        "sandbox": true
+      },
+      "T_ref_s": 32.047276,
+      "M_ref_bytes": 227983360,
+      "walls_s": [
+        31.721799,
+        31.967738,
+        32.361487,
+        32.022138,
+        32.151952
+      ],
+      "outside_s": [
+        31.9068,
+        32.1536,
+        32.5388,
+        32.196,
+        32.3096
+      ],
+      "spread_ok": true,
+      "timeout_s": 320.5,
+      "board_cap_s": 96.1
+    },
+    "b": {
+      "generate_s": 77.8,
+      "inputs_sha256": {
+        "docs.txt": "6cd461670d6c39f9c5211162577532d3648edeab12340c71cc7d2ab5f18e66c8",
+        "queries.txt": "77ef7ffc59afde051006b02a2ce8e4c090fbbfbf101acd6f862d0f8e298d39f9"
+      },
+      "output": "results.txt",
+      "output_sha256": [
+        "f86973c210228141bcb6f1f1b10188ad2a9b65f71e7cd7cf4590b38de4e80927"
+      ],
+      "gates": {
+        "correctness": true,
+        "timeout": true,
+        "sandbox": true
+      },
+      "T_ref_s": 56.352376,
+      "M_ref_bytes": 2199961600,
+      "walls_s": [
+        56.290086,
+        56.63586,
+        56.32583,
+        56.103261,
+        56.441212
+      ],
+      "outside_s": [
+        56.5265,
+        56.8085,
+        56.5083,
+        56.2928,
+        56.6223
+      ],
+      "spread_ok": true,
+      "timeout_s": 563.5,
+      "board_cap_s": 169.1
+    },
+    "c": {
+      "generate_s": 17.8,
+      "inputs_sha256": {
+        "records.csv": "36166f4ac44101a22ebf25b4f949436a681a2698cb0f2ae1f7f6853010259f48",
+        "regions.csv": "414c57c4f3ec968f9bce28c59eebfdf57a9425322b468db7ee964c18c4852fe1"
+      },
+      "output": "aggregates.txt",
+      "output_sha256": [
+        "d8088b1cd42ba1338b1345b107b55db7b96ef1f5066f3ff64fd26a8912a0f536"
+      ],
+      "gates": {
+        "correctness": true,
+        "timeout": true,
+        "sandbox": true
+      },
+      "T_ref_s": 14.444059,
+      "M_ref_bytes": 367435776,
+      "walls_s": [
+        14.192583,
+        14.578906,
+        14.809652,
+        14.371098,
+        14.382174
+      ],
+      "outside_s": [
+        14.4002,
+        14.7528,
+        14.9946,
+        14.5267,
+        14.5494
+      ],
+      "spread_ok": true,
+      "timeout_s": 144.4,
+      "board_cap_s": 43.3
+    },
+    "d": {
+      "generate_s": 65.1,
+      "inputs_sha256": {
+        "graph.txt": "fe6471f2712d10b23c2ec58a4cbc7db1ea3e742daf6b6db62829e74d6c4a26c7",
+        "queries.txt": "160f1ef48378dcb567a8d9ddd2676ee777b044a5ede3ad4c7b42e812aa4b3a6f"
+      },
+      "output": "distances.txt",
+      "output_sha256": [
+        "a23dbdf0a3e49cc8901310a9ee1dc6a9a569a85297b6da75c2a7002cb2ed277e"
+      ],
+      "gates": {
+        "correctness": true,
+        "timeout": true,
+        "sandbox": true
+      },
+      "T_ref_s": 72.692655,
+      "M_ref_bytes": 892915712,
+      "walls_s": [
+        72.930861,
+        72.799772,
+        72.832328,
+        72.445866,
+        72.091295
+      ],
+      "outside_s": [
+        73.1281,
+        72.9717,
+        72.9996,
+        72.6404,
+        72.2743
+      ],
+      "spread_ok": true,
+      "timeout_s": 726.9,
+      "board_cap_s": 218.1
+    }
+  },
+  "finished": "2026-10-24T15:32:38Z"
+}

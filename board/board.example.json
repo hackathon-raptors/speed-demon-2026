@@ -1,0 +1,45 @@
+{
+  "dataset_label": "full public dataset, seed 1 (kickoff release, Oct 30)",
+  "registry": "/srv/speeddemon/board/registry.json",
+  "state_dir": "/srv/speeddemon/board/state",
+  "history": "/srv/speeddemon/board/state/history.jsonl",
+  "feed": "/srv/speeddemon/board/public/board.json",
+  "checkouts": "/srv/speeddemon/board/checkouts",
+  "work": "/srv/speeddemon/work/board",
+  "timer": "/srv/speeddemon/bin/sd-timer",
+  "allowlist": "/opt/speed-demon-2026/harness/allowlist.json",
+  "calibration": "/srv/speeddemon/calibration.json",
+  "cgroups": "host",
+  "run_cpuset": "0-11",
+  "run_timeout_factor": 3.0,
+  "min_interval_s": 900,
+  "poll_interval_s": 60,
+  "mirror_command": null,
+  "reference_check": {
+    "enabled": true,
+    "interval_s": 10800,
+    "initial_delay_s": 300,
+    "tracks": ["a"],
+    "runs": 5,
+    "drift_threshold": 0.02
+  },
+  "builder": {
+    "name": "speeddemon-builder",
+    "image": "moby/buildkit:v0.34.1",
+    "network": "host",
+    "cpuset": "12-19",
+    "memory": "16g",
+    "pids": 1024,
+    "max_concurrent": 2,
+    "timeout_s": 600,
+    "image_max_bytes": 2147483648,
+    "buildkitd_config": "/opt/speed-demon-2026/board/buildkitd.toml"
+  },
+  "disk": {"paths": ["/var/lib/docker", "/srv/speeddemon"], "min_free_gb": 100, "resume_free_gb": 110},
+  "tracks": {
+    "a": {"data": "/srv/speeddemon/data/track-a/full-seed1", "ref": {"S": null, "D": 1}},
+    "b": {"data": "/srv/speeddemon/data/track-b/full-seed1", "ref": {"S": null, "D": 1}},
+    "c": {"data": "/srv/speeddemon/data/track-c/full-seed1", "ref": {"S": null, "D": 1}},
+    "d": {"data": "/srv/speeddemon/data/track-d/full-seed1", "ref": {"S": null, "D": 1}}
+  }
+}
