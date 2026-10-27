@@ -26,10 +26,10 @@ This is what scores every submission and the reference on the scoring box, and y
 python3 harness/run_submission.py --context ./track-a --track a \
     --data ./.data/a/sample-seed1 --output <spec output name> \
     --expected-sha256 <published sample hash> --timeout-s <10x reference> \
-    --work /tmp/sd-work --results result.json
+    --timer harness/timer/sd-timer --cpuset 0-3 --work ~/sd-work --results result.json
 ```
 
-Reading `memory.peak` needs root and Docker's `cgroupfs` driver on cgroup v2 (see [`setup-box.sh`](setup-box.sh)). On Colima, pass `--cgroups colima`. Your laptop's numbers are for your own iteration; only the scoring box's numbers count.
+`--timer` must be an `sd-timer` built for your container's architecture: a `linux/arm64` build ships as [`timer/sd-timer-arm64`](timer/sd-timer-arm64) for Apple Silicon, and [`setup-box.sh`](setup-box.sh) compiles `timer/sd-timer` on the box. Set `--cpuset` to cores your machine actually has (the default assumes 12), and `--work` to a directory the Docker VM can write, which on Colima must be under your home directory. A single `--runs 1` is fine for a quick check. Reading `memory.peak` needs root and Docker's `cgroupfs` driver on cgroup v2 (see [`setup-box.sh`](setup-box.sh)). On Colima, pass `--cgroups colima`. Your laptop's numbers are for your own iteration; only the scoring box's numbers count.
 
 ## S and D
 

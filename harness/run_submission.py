@@ -187,7 +187,7 @@ def run_once(tag, track, cmd, args, timer_bin, cgroups, timeout_s):
 
 
 def spread_ok(walls):
-    middle = sorted(walls)[1:-1]
+    middle = sorted(walls)[1:-1] or sorted(walls)
     mean = sum(middle) / len(middle)
     return (max(middle) - min(middle)) <= max(0.05 * mean, 0.050), mean
 
