@@ -169,5 +169,5 @@ Compared with the Track A entry on https://speeddemon.dev (`late-oct-event/src/d
 5. **`status` is narrowed from uint16 to three digits, 100 to 599.**
 6. **The task is pinned down where the site is loose:** percentiles are nearest rank, and the error rate is printed as an integer count plus floor parts per million instead of a fraction.
 7. **"Monotonic per shard but interleaved across shards"** is kept, with two clarifications: the shard is not a field in the line, and no bound on disorder is promised.
-8. **Added detail the site does not give:** the 72-hour span (2026-10-30T18:00Z to 2026-11-02T18:00Z, the event window, fixed for every seed) and the eight shards.
+8. **Added detail the site does not give:** the 72-hour span (2026-10-30T18:00Z to 2026-11-02T18:00Z, fixed for every seed) and the eight shards.
 9. **"1,842 distinct"** holds for `full` and `sample`. `tiny`, the test scale, has a subset of the catalogue.

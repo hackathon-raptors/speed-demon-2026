@@ -1,6 +1,6 @@
 # The live board
 
-From kickoff (Oct 30 18:00 UTC) to code freeze (Nov 2 18:00 UTC), the board runs every team's latest push once on the full public dataset and publishes the result. It's for iteration and for the judges' run-history check; final scoring is separate (five runs on the hidden holdout seed, with the box to itself).
+From kickoff (Oct 30 15:00 UTC) to code freeze (Nov 2 15:00 UTC), the board runs every team's latest push once on the full public dataset and publishes the result. It's for iteration and for the judges' run-history check; final scoring is separate (five runs on the hidden holdout seed, with the box to itself).
 
 ## What it does
 

@@ -3,7 +3,7 @@
 #   install -m 0644 /opt/speed-demon-2026/board/speeddemon-board-publish.service /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now speeddemon-board
 # Enable only the board; the publisher follows it (Wants= pulls it in, BindsTo= stops it with the board).
-# Stop it at code freeze (Nov 2 18:00 UTC) so final scoring has the box to itself:
+# Stop it at code freeze (Nov 2 15:00 UTC) so final scoring has the box to itself:
 #   systemctl disable --now speeddemon-board
 [Unit]
 Description=Speed Demon 2026 live board

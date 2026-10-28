@@ -1,6 +1,6 @@
 # Final scoring (B1) — the post-freeze runbook
 
-Final scoring runs **after code freeze (Nov 2 18:00 UTC)**, on the box **to itself**, on a **private
+Final scoring runs **after code freeze (Nov 2 15:00 UTC)**, on the box **to itself**, on a **private
 holdout seed**. It scores every team's **frozen** commit, re-runs the reference before and after every
 batch, and throws out + rescores any batch the box drifted through (the site's promise). It emits the
 **machine side** only — judge scores (0.35 weight) and the blended `track_total`/`overall` are combined
@@ -8,7 +8,7 @@ in a separate step after judging.
 
 `harness/final_scoring.py` has two subcommands: `snapshot` (pin the commits, at freeze) and `score`.
 
-## 1. At freeze (Nov 2 18:00): pin the frozen commits
+## 1. At freeze (Nov 2 15:00): pin the frozen commits
 
 Run this **at** the freeze so a later push cannot change what is scored. It only does `ls-remote`, so the
 board can still be up.
