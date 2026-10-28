@@ -126,6 +126,8 @@ DEFAULTS = {
 PATH_KEYS = ("registry", "state_dir", "history", "feed", "checkouts", "work", "timer", "allowlist")
 UNCHANGED = ("this folder is the unchanged starter, which is the published reference and scores about 0, "
              "so the board does not run it; change the code and push again")
+SIGILL_REBUILD = ("illegal instruction: the image was compiled for a CPU feature the scoring box does not have; "
+                  "this track now builds on the scoring box, and the same commit reruns automatically")
 
 
 def deep_merge(base, extra):
@@ -263,6 +265,7 @@ class TrackJob:
     axes: dict | None = None
     build_started_at: float | None = None
     build_ended_at: float | None = None
+    builder: str = ""               # backend that produced the image: "depot" or "local"
 
     @property
     def ok(self):
@@ -284,6 +287,7 @@ class Job:
     failure_stage: str = ""
     failure: str = ""
     builder: str = ""                 # backend building right now ("depot" or "local"), for the feed
+    rebuild_on_box: bool = False      # a Depot-built run hit SIGILL: requeue the commit for an on-box build
 
 
 class Board:
@@ -604,10 +608,17 @@ class Board:
             labels = {"dev.speeddemon.board": "1", "dev.speeddemon.team": job.slug,
                       "dev.speeddemon.track": track, "dev.speeddemon.commit": job.commit}
             scrub = [(os.path.realpath(checkout), "."), (os.path.abspath(checkout), ".")]
-            res = steps.build_image(os.path.join(checkout, f"track-{track}"), tj.tag, self.cfg["builder"], labels,
+            track_dir = os.path.join(checkout, f"track-{track}")
+            with self.lock:
+                sticky = track in self.fq.team(job.slug).box_tracks
+            native = [] if sticky else steps.native_cpu_flags(track_dir)
+            if native:
+                log.info("%s track %s asks for the native CPU (%s): building on the box", job.team, track, ", ".join(native))
+            res = steps.build_image(track_dir, tj.tag, self.cfg["builder"], labels,
                                     self.procs, f"build:{job.job_id}:{track}", replacements=scrub,
-                                    on_backend=lambda b: setattr(job, "builder", b))
-            tj.build_s, tj.image_bytes = res["build_s"], res["image_bytes"]
+                                    on_backend=lambda b: setattr(job, "builder", b),
+                                    force_local=sticky or bool(native))
+            tj.build_s, tj.image_bytes, tj.builder = res["build_s"], res["image_bytes"], res.get("builder", "")
             if not res["ok"]:
                 tj.stage, tj.reason, tj.log_tail = res["stage"], res["reason"], res["log_tail"]
                 return tj
@@ -674,6 +685,8 @@ class Board:
                     return                        # left in flight: requeued on the next start
                 with self.cv:
                     self.running = None
+                    if job.rebuild_on_box:
+                        self.fq.requeue_rebuild(job.slug)
                     self.fq.finish(job.slug)
                     self.cv.notify_all()
                 self.save_watch()
@@ -717,6 +730,14 @@ class Board:
             if self.stopping.is_set():
                 return
             rec = self._track_record(job, tj, r, started, ended, timeout_s, harness_error)
+            if tj.builder == "depot" and not rec["ok"] and steps.is_sigill(r):
+                with self.lock:
+                    st = self.fq.team(job.slug)
+                    if tj.track not in st.box_tracks:
+                        st.box_tracks.append(tj.track)
+                job.rebuild_on_box = True
+                rec["failure"] = SIGILL_REBUILD
+                log.warning("%s track %s hit SIGILL on a Depot-built image: rebuilding on the box", job.team, tj.track)
             self.record(rec)
             log.info("%s track %s at %s: %s", job.team, tj.track, job.commit[:12],
                      f"T {rec['T_s']:.3f} s, M {rec['M_bytes'] / 1e6:.1f} MB, K {rec['K']:.4f}, {rec['points']:.2f} points"
@@ -896,7 +917,7 @@ class Board:
                          "build": None if tj.stage in ("check", "unchanged") else tj.stage not in ("build", "image-size", "image"),
                          "correctness": None, "timeout": None, "sandbox": None},
                "T_s": None, "M_bytes": None, "S": None, "D": None, "K": None, "points": None,
-               "static_axes": tj.axes["source"] if tj.axes else None, "timeout_s": timeout_s,
+               "static_axes": tj.axes["source"] if tj.axes else None, "timeout_s": timeout_s, "builder": tj.builder or None,
                "board": {"runs": 1, "run_cpuset": self.cfg["run_cpuset"], "dataset": self.cfg["dataset_label"],
                          "timeout_factor": self.cfg["run_timeout_factor"]}}
         if not tj.ok:

@@ -23,6 +23,7 @@ class TeamState:
     last_dispatched_commit: str = ""
     checked_at: float = 0.0
     watch_error: str = ""
+    box_tracks: list = dataclasses.field(default_factory=list)   # tracks that build on the scoring box
 
     def to_json(self):
         return dataclasses.asdict(self)
@@ -113,6 +114,21 @@ class FairQueue:
         st.last_dispatched_commit = commit
         if st.pending and st.pending["commit"] == commit:
             st.pending = None
+
+    def requeue_rebuild(self, slug):
+        """The job in flight must be rebuilt on the box: queue its commit again, now, at no cost to the team.
+
+        Undoes the dispatch's rate-limit charge (the rebuild is our doing, not a new push). A newer
+        queued push wins instead, and builds on the box anyway via box_tracks. False if nothing queued.
+        """
+        st = self.teams[slug]
+        inf = st.inflight
+        if not inf or st.pending:
+            return False
+        st.last_dispatched_at = inf.get("prev_dispatched_at")
+        st.last_dispatched_commit = inf.get("prev_dispatched_commit") or ""
+        st.pending = {"commit": inf["commit"], "pushed_at": inf["pushed_at"], "attempt": 1}
+        return True
 
     def finish(self, slug):
         self.teams[slug].inflight = None

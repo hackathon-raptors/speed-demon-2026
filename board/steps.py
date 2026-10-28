@@ -279,6 +279,43 @@ def _local_build_cmd(ctx, tag, bcfg, labels):
     return cmd
 
 
+# Flags that compile for the CPU the build runs on. Depot's CPU is not the scoring box's (it has
+# AVX-512, the i5-13500 does not), so a track that uses one is built on the box, where "native"
+# is the scoring CPU. -mtune=native only tunes and never emits a missing instruction.
+NATIVE_CPU_RE = re.compile(rb"(?:-m(?:arch|cpu)|target[-_]cpu|IlcInstructionSet>)\s*[= ]?\s*[\"']?native\b")
+NATIVE_SCAN_SKIP_DIRS = {".git", "target", "node_modules"}
+NATIVE_SCAN_MAX_BYTES = 2 * 1024 * 1024
+
+
+def native_cpu_flags(track_dir, limit=5):
+    """Paths (relative to track_dir) of text files that ask for the build host's CPU."""
+    hits = []
+    for root, dirs, files in os.walk(track_dir):
+        dirs[:] = sorted(d for d in dirs if d not in NATIVE_SCAN_SKIP_DIRS
+                         and not os.path.islink(os.path.join(root, d)))
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            try:
+                if os.path.islink(path) or os.path.getsize(path) > NATIVE_SCAN_MAX_BYTES:
+                    continue
+                with open(path, "rb") as f:
+                    data = f.read()
+            except OSError:
+                continue
+            if b"\0" in data[:4096]:
+                continue
+            if NATIVE_CPU_RE.search(data):
+                hits.append(os.path.relpath(path, track_dir))
+                if len(hits) >= limit:
+                    return hits
+    return hits
+
+
+def is_sigill(r):
+    """The run died on an instruction this CPU lacks (directly, or via a shell's 128+4)."""
+    return bool(r) and (int(r.get("signal") or 0) == signal.SIGILL or r.get("exit_code") == 128 + signal.SIGILL)
+
+
 # The installer puts the CLI in ~/.depot/bin, which is not on systemd's PATH.
 DEPOT_INSTALL_BIN = "/root/.depot/bin/depot"
 
@@ -329,7 +366,7 @@ def _run_build(cmd, timeout_s, procs, key, replacements):
     return killed, proc.returncode, round(time.monotonic() - started, 3), tail
 
 
-def build_image(ctx, tag, bcfg, labels, procs, key, replacements=(), on_backend=None):
+def build_image(ctx, tag, bcfg, labels, procs, key, replacements=(), on_backend=None, force_local=False):
     """Build one track's image, offline, with a hard timeout and the image cap.
 
     backend "local" (default) uses the board's on-box buildx builder; "depot" builds on Depot's
@@ -338,8 +375,9 @@ def build_image(ctx, tag, bcfg, labels, procs, key, replacements=(), on_backend=
     on-box builder, so Depot is never a single point of failure. Returns
     {"ok", "stage", "reason", "build_s", "image_bytes", "log_tail"}.
     """
-    backend = bcfg.get("backend", "local")
+    backend = "local" if force_local else bcfg.get("backend", "local")
     timeout_s = float(bcfg["timeout_s"])
+    used = backend
     note = on_backend or (lambda b: None)
     if backend == "depot":
         note("depot")
@@ -353,6 +391,7 @@ def build_image(ctx, tag, bcfg, labels, procs, key, replacements=(), on_backend=
         if fallback:
             log.warning("depot build unavailable for %s; falling back to the on-box builder", tag)
             note("local")
+            used = "local"
             extra_timeout = max(1.0, timeout_s - build_s)   # don't grant a second full build budget
             killed, rc, extra_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), extra_timeout, procs, key, replacements)
             build_s = round(build_s + extra_s, 3)
@@ -360,7 +399,8 @@ def build_image(ctx, tag, bcfg, labels, procs, key, replacements=(), on_backend=
         note("local")
         killed, rc, build_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), timeout_s, procs, key, replacements)
 
-    result = {"ok": False, "stage": "build", "build_s": build_s, "image_bytes": None, "log_tail": tail.get()}
+    result = {"ok": False, "stage": "build", "build_s": build_s, "image_bytes": None, "log_tail": tail.get(),
+              "builder": used}
     if killed == "timeout":
         return {**result, "reason": f"build exceeded {int(timeout_s)} s"}
     if killed == "disk":

@@ -384,6 +384,129 @@ class DepotFallbackTest(unittest.TestCase):
         self.assertFalse(steps._should_fallback("", 1, self._tail(["some unexpected depot cli crash"]), True))
 
 
+class NativeCpuTest(unittest.TestCase):
+    """A track that compiles for the build host's CPU builds on the box; a Depot-built SIGILL reruns there."""
+
+    def _dir(self, files):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        for rel, body in files.items():
+            path = os.path.join(d, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(body if isinstance(body, bytes) else body.encode())
+        return d
+
+    def test_native_flags_found(self):
+        cases = {
+            "Dockerfile": "RUN gcc -O3 -march=native a.c\n",
+            ".cargo/config.toml": '[build]\nrustflags = ["-C", "target-cpu=native"]\n',
+            "build.sh": "RUSTFLAGS='-Ctarget-cpu=native' cargo build --release\n",
+            "app.csproj": "<IlcInstructionSet>native</IlcInstructionSet>\n",
+            "Makefile": "CFLAGS += -mcpu=native\n",
+            "CMakeLists.txt": 'set(CMAKE_CXX_FLAGS "-march = native")\n',
+        }
+        for rel, body in cases.items():
+            self.assertEqual(steps.native_cpu_flags(self._dir({rel: body})), [rel], rel)
+
+    def test_native_flags_not_found(self):
+        d = self._dir({"Dockerfile": "RUN gcc -O3 -march=alderlake -mtune=native a.c && native-image -march=x86-64-v3 App\n",
+                       "target/release/build.sh": "gcc -march=native\n",
+                       "blob.bin": b"\0\0-march=native",
+                       "README.md": "we use target-cpu=alderlake\n"})
+        self.assertEqual(steps.native_cpu_flags(d), [])
+
+    def test_is_sigill(self):
+        self.assertTrue(steps.is_sigill({"signal": 4, "exit_code": 0}))
+        self.assertTrue(steps.is_sigill({"signal": 0, "exit_code": 132}))
+        self.assertFalse(steps.is_sigill({"signal": 11, "exit_code": 139}))
+        self.assertFalse(steps.is_sigill(None))
+
+    def test_requeue_rebuild_is_immediate_and_free(self):
+        q = fairqueue.FairQueue(900)
+        q.observe("t", "1" * 40, 0)
+        q.dispatch("t", 0, "j1")
+        q.finish("t")
+        q.observe("t", "2" * 40, 1000)
+        q.dispatch("t", 1000, "j2")
+        self.assertTrue(q.requeue_rebuild("t"))
+        q.finish("t")
+        st = q.teams["t"]
+        self.assertEqual(st.pending["commit"], "2" * 40)
+        self.assertEqual(q.eligible_at(st), 1000)          # not 1000 + 900: the rebuild is on us
+        self.assertIs(q.next_eligible(1001), st)
+
+    def test_requeue_rebuild_yields_to_a_newer_push(self):
+        q = fairqueue.FairQueue(900)
+        q.observe("t", "1" * 40, 0)
+        q.dispatch("t", 0, "j1")
+        q.observe("t", "2" * 40, 10)
+        self.assertFalse(q.requeue_rebuild("t"))
+        self.assertEqual(q.teams["t"].pending["commit"], "2" * 40)
+
+    def test_force_local_skips_depot(self):
+        calls = []
+
+        def fake_run(cmd, timeout_s, procs, key, replacements):
+            calls.append(cmd[0])
+            return "", 0, 0.1, LineTailStub()
+
+        class LineTailStub:
+            def get(self):
+                return []
+
+        bcfg = {"backend": "depot", "timeout_s": 60, "image_max_bytes": 10**9, "name": "b"}
+        with mock.patch.object(steps, "_run_build", fake_run), \
+             mock.patch.object(steps, "_local_build_cmd", lambda *a: ["docker", "buildx"]), \
+             mock.patch.object(steps, "image_bytes", lambda tag: 1000):
+            res = steps.build_image("/ctx", "t:x", bcfg, {}, None, "k", force_local=True)
+        self.assertEqual(calls, ["docker"])
+        self.assertEqual(res["builder"], "local")
+
+    def test_sigill_on_depot_rebuilds_on_the_box_and_reruns(self):
+        with tempfile.TemporaryDirectory() as root:
+            data = os.path.join(root, "data")
+            os.makedirs(data)
+            tracks = {"a": {"data": data, "output": "summary.txt", "expected_sha256": "0" * 64,
+                            "ref": {"T_s": 1.0, "M_bytes": 1e6, "S": 40, "D": 1}}}
+            cfg = board.load_config(write_config(root, tracks))
+            cfg["builder"]["backend"] = "depot"
+            repo = FakeRepo(root, "delta")
+            dockerfile = ("FROM debian:13-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad\n"
+                          "COPY run /run\nENTRYPOINT [\"/run\"]\n")
+            commit = repo.push({"track-a/Dockerfile": dockerfile, "track-a/run": "#!/bin/sh\necho 1\n"})
+            write_registry(root, [{"team": "Delta", "repo": repo.bare, "tracks": ["a"], "discord": "d#1"}])
+            builds, runs = [], []
+
+            def fake_build(ctx, tag, bcfg, labels, procs, key, replacements=(), on_backend=None, force_local=False):
+                used = "local" if force_local else "depot"
+                builds.append(used)
+                return {"ok": True, "stage": "built", "reason": "", "build_s": 1.0, "image_bytes": 1000,
+                        "log_tail": [], "builder": used}
+
+            def fake_run(tag, track, cmd, tcfg, cfg_, cgroups):
+                runs.append(tag)
+                if len(runs) == 1:
+                    return {"ok": False, "signal": 4, "exit_code": 0, "reason": "exit code 0 signal 4",
+                            "wall_s": 0.01, "peak_bytes": 1000}, 3.0
+                return {"ok": True, "sha256": "0" * 64, "signal": 0, "exit_code": 0, "wall_s": 0.5,
+                        "peak_bytes": 1e6, "fs_diff": []}, 3.0
+
+            with mock.patch.object(steps, "build_image", fake_build), \
+                 mock.patch.object(steps, "image_entry", lambda tag: (["/run"], "")), \
+                 mock.patch.object(steps, "run_track", fake_run), \
+                 mock.patch.object(steps, "prune_images", lambda *a, **k: []), \
+                 mock.patch.object(board.axes, "static_axes", lambda *a, **k: {"S": 40, "D": 1, "source": "measured"}):
+                b = board.Board(cfg)
+                b.run_until_idle(wait_pending=True, max_seconds=60)
+            recs = [r for r in b.history.snapshot() if r.get("track") == "a"]
+            self.assertEqual(builds, ["depot", "local"])
+            self.assertEqual([r["commit"] for r in recs], [commit, commit])
+            self.assertEqual(recs[0]["failure"], board.SIGILL_REBUILD)
+            self.assertEqual((recs[1]["ok"], recs[1]["builder"]), (True, "local"))
+            self.assertEqual([st.box_tracks for st in b.fq.teams.values()], [["a"]])
+
+
 class RecordsTest(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
