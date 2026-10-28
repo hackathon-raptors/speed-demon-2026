@@ -1,0 +1,16 @@
+[Unit]
+Description=Speed Demon 2026 registry sync (Tally Ar7g9z -> registry.json)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/speed-demon-2026
+ExecStart=/usr/bin/python3 /opt/speed-demon-2026/board/tally_sync.py --form Ar7g9z \
+    --out /srv/speeddemon/board/registry.json --key-file /etc/speeddemon/tally.key \
+    --exclude /etc/speeddemon/registry-exclude.json --extra /etc/speeddemon/registry-extra.json
+TimeoutStartSec=90
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/speeddemon/board
+PrivateTmp=yes
