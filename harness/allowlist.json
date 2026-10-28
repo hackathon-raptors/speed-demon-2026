@@ -1,5 +1,5 @@
 {
-  "note": "Every FROM must be one of these images pinned by its multi-arch index digest, or an earlier stage of the same Dockerfile. Write FROM <image>@<digest>. Ask in Discord before Oct 28 18:00 UTC to add one. Digests resolved Oct 24 2026; halloumee/speed-demon-rust added Oct 28 2026.",
+  "note": "Every FROM must be one of these images pinned by its multi-arch index digest, or an earlier stage of the same Dockerfile. Write FROM <image>@<digest>. Ask in Discord before Oct 28 15:00 UTC to add one. Digests resolved Oct 24 2026; halloumee/speed-demon-rust added Oct 28 2026.",
   "images": [
     {"image": "debian:13-slim", "digest": "sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad", "use": "runtime stage"},
     {"image": "python:3.13-slim", "digest": "sha256:d98cc29d3266e535dd9da1099688d9cb3ca4753813571e071763d17725460962", "use": "Python (the reference)"},
