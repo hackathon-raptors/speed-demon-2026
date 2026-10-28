@@ -94,6 +94,7 @@ DEFAULTS = {
         "timeout_s": 600,
         "backend": "local",                      # "local" (on-box buildx) or "depot" (off-box, isolated)
         "depot_project": "",                     # Depot project id; empty = $DEPOT_PROJECT_ID (needs $DEPOT_TOKEN)
+        "depot_bin": "",                         # empty = `depot` on PATH, else /root/.depot/bin/depot
         "depot_platform": "linux/amd64",
         "fallback_local": True,                  # on a Depot outage, fall back to the on-box builder
         "image_max_bytes": 2 * 1024**3,

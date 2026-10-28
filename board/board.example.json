@@ -24,6 +24,7 @@
     "drift_threshold": 0.02
   },
   "builder": {
+    "backend": "depot",
     "name": "speeddemon-builder",
     "image": "moby/buildkit:v0.34.1",
     "network": "host",

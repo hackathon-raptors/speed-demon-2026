@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -357,6 +358,24 @@ class DepotFallbackTest(unittest.TestCase):
 
     def test_disabled_does_not_fall_back(self):
         self.assertFalse(steps._should_fallback("", 1, self._tail(["unauthenticated: Invalid token"]), False))
+
+    def test_missing_depot_cli_falls_back(self):
+        calls = []
+
+        def fake_run(cmd, timeout_s, procs, key, replacements):
+            calls.append(cmd[0])
+            if cmd[0] == "/nonexistent/depot":
+                raise FileNotFoundError(cmd[0])
+            return "", 0, 0.1, self._tail(["#1 DONE"])
+
+        bcfg = {"backend": "depot", "depot_bin": "/nonexistent/depot", "timeout_s": 60,
+                "image_max_bytes": 10**9, "name": "b"}
+        with mock.patch.object(steps, "_run_build", fake_run), \
+             mock.patch.object(steps, "_local_build_cmd", lambda *a: ["docker", "buildx"]), \
+             mock.patch.object(steps, "image_bytes", lambda tag: 1000):
+            res = steps.build_image("/ctx", "t:x", bcfg, {}, None, "k")
+        self.assertEqual(calls, ["/nonexistent/depot", "docker"])
+        self.assertTrue(res["ok"], res)
 
     def test_non_infra_preflight_does_not_fall_back(self):
         # pre-flight, no buildkit, but no known infra marker -> a real failure, not a fallback

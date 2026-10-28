@@ -279,6 +279,14 @@ def _local_build_cmd(ctx, tag, bcfg, labels):
     return cmd
 
 
+# The installer puts the CLI in ~/.depot/bin, which is not on systemd's PATH.
+DEPOT_INSTALL_BIN = "/root/.depot/bin/depot"
+
+
+def _depot_bin(bcfg):
+    return bcfg.get("depot_bin") or shutil.which("depot") or DEPOT_INSTALL_BIN
+
+
 def _depot_build_cmd(ctx, tag, bcfg, labels):
     """Build on Depot's isolated ephemeral builders, offline, amd64, loaded back to the local dockerd.
 
@@ -286,7 +294,7 @@ def _depot_build_cmd(ctx, tag, bcfg, labels):
     local build (digest-pinned bases), so the timed run on the box is unaffected.
     """
     project = bcfg.get("depot_project") or os.environ.get("DEPOT_PROJECT_ID", "")
-    cmd = ["depot", "build", "--network", "none", "--build-platform",
+    cmd = [_depot_bin(bcfg), "build", "--network", "none", "--build-platform",
            bcfg.get("depot_platform", "linux/amd64"), "--load", "--progress=plain"]
     if project:
         cmd += ["--project", project]
@@ -333,8 +341,14 @@ def build_image(ctx, tag, bcfg, labels, procs, key, replacements=()):
     backend = bcfg.get("backend", "local")
     timeout_s = float(bcfg["timeout_s"])
     if backend == "depot":
-        killed, rc, build_s, tail = _run_build(_depot_build_cmd(ctx, tag, bcfg, labels), timeout_s, procs, key, replacements)
-        if _should_fallback(killed, rc, tail, bcfg.get("fallback_local", True)):
+        try:
+            killed, rc, build_s, tail = _run_build(_depot_build_cmd(ctx, tag, bcfg, labels), timeout_s, procs, key, replacements)
+            fallback = _should_fallback(killed, rc, tail, bcfg.get("fallback_local", True))
+        except OSError as exc:                  # the CLI itself is missing or not executable: infra, not the team
+            log.error("depot CLI could not start (%s)", exc)
+            killed, rc, build_s, tail = "", 1, 0.0, LineTail(replacements=replacements)
+            fallback = bool(bcfg.get("fallback_local", True))
+        if fallback:
             log.warning("depot build unavailable for %s; falling back to the on-box builder", tag)
             extra_timeout = max(1.0, timeout_s - build_s)   # don't grant a second full build budget
             killed, rc, extra_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), extra_timeout, procs, key, replacements)
