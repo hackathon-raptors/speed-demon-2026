@@ -22,6 +22,6 @@ python3 generators/a_ingest.py --seed 1 --scale sample --out .data/a/sample-seed
 python3 -m unittest discover -s tests
 ```
 
-The same seed and scale give byte-identical files on any machine. From October 30, samples and their expected hashes are also on speeddemon.dev.
+The same seed and scale give byte-identical files on any machine. Seed 1 at `full` scale is the live board's dataset; the full datasets and their expected hashes are also published on speeddemon.dev at kickoff, October 30, 15:00 UTC.
 
 MIT licensed.

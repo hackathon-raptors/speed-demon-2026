@@ -25,7 +25,7 @@ This is what scores every submission and the reference on the scoring box, and y
 ```
 python3 harness/run_submission.py --context ./track-a --track a \
     --data ./.data/a/sample-seed1 --output <spec output name> \
-    --expected-sha256 <published sample hash> --timeout-s <10x reference> \
+    --expected-sha256 <the reference's hash for that data> --timeout-s <10x reference> \
     --timer harness/timer/sd-timer --cpuset 0-3 --work ~/sd-work --results result.json
 ```
 
