@@ -373,8 +373,10 @@ class DepotFallbackTest(unittest.TestCase):
         with mock.patch.object(steps, "_run_build", fake_run), \
              mock.patch.object(steps, "_local_build_cmd", lambda *a: ["docker", "buildx"]), \
              mock.patch.object(steps, "image_bytes", lambda tag: 1000):
-            res = steps.build_image("/ctx", "t:x", bcfg, {}, None, "k")
+            seen = []
+            res = steps.build_image("/ctx", "t:x", bcfg, {}, None, "k", on_backend=seen.append)
         self.assertEqual(calls, ["/nonexistent/depot", "docker"])
+        self.assertEqual(seen, ["depot", "local"])
         self.assertTrue(res["ok"], res)
 
     def test_non_infra_preflight_does_not_fall_back(self):
@@ -445,6 +447,13 @@ class RecordsTest(unittest.TestCase):
         self.assertEqual(entry["tracks"]["a"]["queue_latency_s"], 100.0)
         self.assertEqual(feed["queue"]["recent_latency_s"], 6.0)
         self.assertNotIn("secret-handle", json.dumps(feed))
+
+        q.dispatch("alpha-1", 1000, "j2")
+        for builder, want in (("depot", "depot"), ("local", "local"), (True, None)):
+            f2 = records.build_feed(1001, [team], q, {"running": None, "building": {"alpha-1": builder}}, recs, {"dataset": "tiny"})
+            inf = f2["teams"][0]["queue"]["in_flight"]
+            self.assertEqual(inf["state"], "building")
+            self.assertEqual(inf.get("builder"), want)
 
 
 class GuardsTest(unittest.TestCase):

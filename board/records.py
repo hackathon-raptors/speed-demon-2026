@@ -220,6 +220,8 @@ def build_feed(now, teams, fq, runtime, records, info):
                          "dispatched_at": iso(inf["dispatched_at"]), "waiting_s": round(now - inf["pushed_at"], 1)}
             if state == "running":
                 in_flight["track"] = running["track"]
+            elif state == "building" and isinstance(building[team.slug], str):
+                in_flight["builder"] = building[team.slug]
             oldest = max(oldest, now - inf["pushed_at"])
         if st and st.pending:
             eligible = fq.eligible_at(st)

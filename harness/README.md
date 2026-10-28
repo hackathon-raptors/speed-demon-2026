@@ -5,7 +5,7 @@ This is what scores every submission and the reference on the scoring box, and y
 ## What a scored run does
 
 1. **Allowlist check:** every `FROM` in your Dockerfile must be an image from [`allowlist.json`](allowlist.json), pinned by digest, or an earlier stage of the same Dockerfile.
-2. **Build:** `docker build --network=none`, so `RUN` steps are offline. The build gets 10 minutes and the image may be at most 2 GB. Build time is not scored.
+2. **Build:** `docker build --network=none`, so `RUN` steps are offline. The build gets 10 minutes and the image may be at most 2 GB. Build time is not scored. The build runs on a separate build machine whose CPU differs from the scoring box and may have AVX-512, so never compile for native; target the scoring CPU with `-march=alderlake` / `-C target-cpu=alderlake`, or use `x86-64-v3`.
 3. **Pre-warm:** the dataset is loaded into the page cache with `vmtouch` before timing.
 4. **Five runs,** strictly one at a time, with nothing else on the box. Each run:
    - starts your image with the published limits (6 P-cores and 12 threads, 8 GB of memory with no swap, no network, read-only root, a 1 GB tmpfs at `/tmp`, `/data` read-only, `/out` writable);

@@ -329,7 +329,7 @@ def _run_build(cmd, timeout_s, procs, key, replacements):
     return killed, proc.returncode, round(time.monotonic() - started, 3), tail
 
 
-def build_image(ctx, tag, bcfg, labels, procs, key, replacements=()):
+def build_image(ctx, tag, bcfg, labels, procs, key, replacements=(), on_backend=None):
     """Build one track's image, offline, with a hard timeout and the image cap.
 
     backend "local" (default) uses the board's on-box buildx builder; "depot" builds on Depot's
@@ -340,7 +340,9 @@ def build_image(ctx, tag, bcfg, labels, procs, key, replacements=()):
     """
     backend = bcfg.get("backend", "local")
     timeout_s = float(bcfg["timeout_s"])
+    note = on_backend or (lambda b: None)
     if backend == "depot":
+        note("depot")
         try:
             killed, rc, build_s, tail = _run_build(_depot_build_cmd(ctx, tag, bcfg, labels), timeout_s, procs, key, replacements)
             fallback = _should_fallback(killed, rc, tail, bcfg.get("fallback_local", True))
@@ -350,10 +352,12 @@ def build_image(ctx, tag, bcfg, labels, procs, key, replacements=()):
             fallback = bool(bcfg.get("fallback_local", True))
         if fallback:
             log.warning("depot build unavailable for %s; falling back to the on-box builder", tag)
+            note("local")
             extra_timeout = max(1.0, timeout_s - build_s)   # don't grant a second full build budget
             killed, rc, extra_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), extra_timeout, procs, key, replacements)
             build_s = round(build_s + extra_s, 3)
     else:
+        note("local")
         killed, rc, build_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), timeout_s, procs, key, replacements)
 
     result = {"ok": False, "stage": "build", "build_s": build_s, "image_bytes": None, "log_tail": tail.get()}

@@ -283,6 +283,7 @@ class Job:
     tracks: list = dataclasses.field(default_factory=list)
     failure_stage: str = ""
     failure: str = ""
+    builder: str = ""                 # backend building right now ("depot" or "local"), for the feed
 
 
 class Board:
@@ -604,7 +605,8 @@ class Board:
                       "dev.speeddemon.track": track, "dev.speeddemon.commit": job.commit}
             scrub = [(os.path.realpath(checkout), "."), (os.path.abspath(checkout), ".")]
             res = steps.build_image(os.path.join(checkout, f"track-{track}"), tj.tag, self.cfg["builder"], labels,
-                                    self.procs, f"build:{job.job_id}:{track}", replacements=scrub)
+                                    self.procs, f"build:{job.job_id}:{track}", replacements=scrub,
+                                    on_backend=lambda b: setattr(job, "builder", b))
             tj.build_s, tj.image_bytes = res["build_s"], res["image_bytes"]
             if not res["ok"]:
                 tj.stage, tj.reason, tj.log_tail = res["stage"], res["reason"], res["log_tail"]
@@ -948,7 +950,7 @@ class Board:
         with self.feed_lock:
             with self.lock:
                 runtime = {"running": dict(self.running) if self.running else None,
-                           "building": {slug: True for slug in self.building},
+                           "building": {slug: (getattr(j, "builder", "") or True) for slug, j in self.building.items()},
                            "ready": [j.slug for j in self.ready], "disk_ok": self.disk.ok}
                 teams = list(self.teams.values())
                 fq = copy.deepcopy(self.fq)
