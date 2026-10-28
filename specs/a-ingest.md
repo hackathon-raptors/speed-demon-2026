@@ -160,10 +160,8 @@ Everything else is allowed and priced on the D axis: hash maps, sorting and sele
 
 Compared with the Track A entry on https://speeddemon.dev (`late-oct-event/src/data/tracks.json`):
 
-1. **`dataset_mb` 312 becomes 239** (238,836,234 bytes for seed 1). The line count, 3.1M, is the binding number; lines of this format average 77 bytes, so 312 MB would need about 100-byte lines.
-2. **`reference_s` 41.2 becomes 13.4 s on an Apple M4 Pro.** The box figure comes from the Oct 26 and 27 calibration. About 80% of the reference's time is the per-line `strptime`, so with 3.1M lines fixed the time follows the line count rather than the data's shape.
-3. **`timeout_s` 412 becomes 10 times the box reference time,** pinned after calibration. On the M4 Pro figure it would be 134 s.
-4. **The three preview rows should be replaced.** They are not generator output, and the site says they are "three consecutive lines from the sample set, unmodified". Lines 849 to 851 of the seed-1 sample are:
+1. **The site's `spec` numbers are the final scoring-box figures.** `dataset_mb` is 239 (238,836,234 bytes for seed 1); `reference_s` is the box-calibrated reference and `timeout_s` is ten times it. The line count, 3.1M, is the binding number; lines of this format average 77 bytes. About 80% of the reference's time is the per-line `strptime`, so with 3.1M lines fixed the time follows the line count rather than the data's shape. (On an Apple M4 Pro the reference runs in about 13.4 s; the scoring box differs.)
+2. **The three preview rows** on the site are lines 849 to 851 of the seed-1 sample, unmodified:
    `2026-10-30T18:07:18.569411Z GET /api/v2/products 200 8177`,
    `2026-10-30T18:07:21.136274Z GET /beta/regions 503 81573`,
    `2026-10-30T18:07:27.963350Z PUT /v2/ab_tests 200 6381`.

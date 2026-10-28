@@ -18,7 +18,7 @@ From kickoff (Oct 30 18:00 UTC) to code freeze (Nov 2 18:00 UTC), the board runs
 5. **Record.** Every attempt, including check failures, appends one fsynced line to `history.jsonl`. Each line holds run_id, team, track, commit, push time, dispatch, build and run times, the gates, T, M, S, D, K, points and a short failure reason. A failed build's record keeps the last 40 lines of that team's own build output, and a failed run's the last 20 lines of its stderr; nothing else is ever kept. BuildKit's own build history is switched off in `buildkitd.toml`.
 6. **Publish.** `board.json` is replaced atomically after every record and every 10 s. Per team and track it holds the best and latest run, the queue position, and how long the team's oldest unrun push has waited. Discord handles and host paths never appear in it. An optional `mirror_command` runs after every history append, to copy the history and the feed off the box.
 
-K and points come from `harness/scoring.py`. S and D come from `harness/static_axes.py` once it lands. Until then `axes.py` sets them to the reference's values, so they don't move K, and every record says `"static_axes": "stubbed"`.
+K and points come from `harness/scoring.py`. S and D come from `harness/static_axes.py`. If that measurement fails for a run, `axes.py` sets them to the reference's values so K stays computable, and the record says `"static_axes": "stubbed"`.
 
 ## Files
 

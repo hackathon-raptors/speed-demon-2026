@@ -11,7 +11,7 @@ Speed Demon 2026 has four tracks: A Ingest, B Index, C Join, D Traverse. Each on
 
 ## Runtime and dependencies
 
-- Python 3.13 (`/opt/homebrew/bin/python3.13` locally; `python:3.13-slim` in the container). Standard library only, for generators, references and tests.
+- Python 3.13 (`python:3.13-slim` in the container; 3.11 or newer works locally). Standard library only, for generators, references and tests.
 - No `numpy`, no `pandas`, nothing from PyPI.
 
 ## Generator
@@ -63,7 +63,7 @@ python3.13 reference/<track>.py [--data /data] [--out /out]
 5. **Sizes:** `full` and `sample` record counts and bytes, as measured from your generator with seed 1.
 6. **Banned libraries:** per the site's rule 02, named explicitly.
 7. **Reference behaviour:** what the naive reference does and why it is slow, in a few bullets. Do not hint at optimisations beyond what the site already says.
-8. **Changes from the site:** every place the spec differs from https://speeddemon.dev (text in `/Users/souvlakee/Sources/late-oct-event/src/data/tracks.json`), with the reason.
+8. **Changes from the site:** every place the spec differs from https://speeddemon.dev (the site's `src/data/tracks.json`), with the reason.
 
 ## Tests (`tests/test_<track>.py`, stdlib `unittest`)
 

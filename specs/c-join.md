@@ -257,7 +257,7 @@ Compared with the Track C entry on https://speeddemon.dev (`src/data/tracks.json
 
 1. **`spec.dataset_mb` 204 → 204.1.** That is the measured total of both files (records.csv 201.9 MB, regions.csv 2.2 MB). It is effectively unchanged.
 2. **`spec.records` "hostile CSV" → 3,320,000 records.**
-3. **`spec.reference_s` 36.9 → 6.0 s measured on an Apple M4 Pro.** This is below the conventions' 20 to 60 s band. The reference gets through this file at about 34 MB/s, because Python's `csv` module does the parsing in C. A csv-module reference would reach 20 s only at roughly three times the published dataset size, and the size was kept at 204 MB. The scoring-box time, and `timeout_s` at 10× that time, come from the calibration on Oct 26-27.
+3. **`spec.reference_s` is the box-calibrated reference,** with `timeout_s` at ten times it. On an Apple M4 Pro the reference runs in about 6.0 s, below the conventions' 20 to 60 s band: Python's `csv` module parses in C at about 34 MB/s, and a csv-module reference would reach 20 s only at roughly three times the published dataset size, so the size was kept at 204 MB. The scoring box differs.
 4. **The lookup table is named and defined.** The site says "join it against a lookup table" without naming one. It is `regions.csv` (section 2.3), and it is deliberately plain.
 5. **"Emit sorted aggregates" is defined** (sections 3 and 4). `id_sum` and `name_bytes` are there so that BOM handling and unescaping both change the hash.
 6. **"A UTF-8 BOM on some chunks and not others" is made precise.** The file always starts with a BOM. Mid-file BOMs appear only at record boundaries (section 2.2), and the BOM rule is stated exactly in 2.1.

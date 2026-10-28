@@ -262,9 +262,9 @@ Measured at `full`, seed 1, on an Apple M4 Pro with `/usr/bin/time -l`: 46.8 s a
 
 The site text is in `late-oct-event/src/data/tracks.json`. Differences, with reasons:
 
-1. **Dataset size is 92 MB, not 180 MB.** `graph.txt` is 91,950,247 bytes at `full` (about 18.4 bytes per edge line); 180 was a placeholder. `n`, `m`, the header and the line format are exactly as published.
-2. **Reference time and timeout.** The published 72.4 s and 724 s were placeholders. Measured here: about 43 to 48 s on an Apple M4 Pro; the scoring-box time and the 10x timeout follow from the Oct 26-27 calibration.
-3. **The preview lines are illustrative.** `0 918442 37`, `918442 0 41`, `1 7 1200` and `1739998 62 9` have the right format and are typical of the data, but they are not lines of the seed-1 file. The first edge lines of the seed-1 `full` file are `1188446 437285 120`, `64107 865467 170`, `472413 359585 122` and `429961 196139 82`, if the site should show real ones.
+1. **Dataset size is 92 MB.** `graph.txt` is 91,950,247 bytes at `full` (about 18.4 bytes per edge line). `n`, `m`, the header and the line format are exactly as published.
+2. **Reference time and timeout** are the final scoring-box figures: the box-calibrated `reference_s` and `timeout_s` at ten times it. (On an Apple M4 Pro the reference runs in about 43 to 48 s; the scoring box differs.)
+3. **The preview lines** on the site are the first edge lines of the seed-1 `full` file: `1188446 437285 120`, `64107 865467 170`, `472413 359585 122` and `429961 196139 82`.
 4. **Weight 0 is legal.** The site says weights are uint32; this spec makes explicit that the range is `[0, 4294967295]`, that 0 occurs, and that sums are not limited to 32 bits.
 5. **Things the site does not mention, all defined here:** parallel edges, exact duplicate lines, self-loops, nodes with no edges (they still count in `n`), and unreachable pairs.
 6. **Queries and output are defined here.** The site gives only the query count. This spec adds `queries.txt` (2,000 lines `s t`, no header), the query distribution in section 2, and `distances.txt` with `-1` for unreachable.
