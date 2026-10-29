@@ -8,7 +8,8 @@ Type=oneshot
 WorkingDirectory=/opt/speed-demon-2026
 ExecStart=/usr/bin/python3 /opt/speed-demon-2026/board/tally_sync.py --form Ar7g9z \
     --out /srv/speeddemon/board/registry.json --key-file /etc/speeddemon/tally.key \
-    --exclude /etc/speeddemon/registry-exclude.json --extra /etc/speeddemon/registry-extra.json
+    --exclude /etc/speeddemon/registry-exclude.json --extra /etc/speeddemon/registry-extra.json \
+    --security-dir /srv/speeddemon/board/state
 TimeoutStartSec=90
 NoNewPrivileges=yes
 ProtectSystem=strict
