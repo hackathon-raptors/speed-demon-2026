@@ -114,7 +114,7 @@ systemctl enable speeddemon-board >/dev/null
 
 say "bootstrap complete. Before starting:"
 echo "  - confirm clocks:  cat /sys/devices/system/cpu/intel_pstate/no_turbo (1), .../cpu0/cpufreq/scaling_governor (performance)"
-echo "  - confirm builder: docker inspect buildx_buildkit_speeddemon-builder0 --format '{{.HostConfig.PidsLimit}}' (1024)"
+echo "  - confirm builder: docker inspect speeddemon-builder-buildkitd --format '{{.HostConfig.Privileged}} {{.HostConfig.PidsLimit}}' (false 1024)"
 echo "  - baseline canary: python3 $CODE/board/board.py reference-check --config /etc/speeddemon/board.json"
 echo "  LIVE board:  systemctl start speeddemon-board   (publisher follows)"
 echo "  FINAL score: python3 $CODE/harness/final_scoring.py ...  (board stopped; see FINAL_SCORING.md)"

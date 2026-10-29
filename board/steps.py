@@ -165,6 +165,9 @@ def _rootless_run_cmd(bcfg):
 
 def _ensure_rootless(bcfg):
     name, ctr = bcfg["name"], builder_container(bcfg)
+    if "rootless" not in bcfg["image"].rsplit("/", 1)[-1]:
+        raise RuntimeError(f"builder.driver is rootless but builder.image {bcfg['image']!r} is not a rootless "
+                           "BuildKit image (moby/buildkit:<version>-rootless)")
     state = sh(["docker", "inspect", "-f", "{{.State.Status}}", ctr], timeout=30).stdout.strip()
     created = not state
     if created:
@@ -409,12 +412,17 @@ def _depot_build_cmd(ctx, tag, bcfg, labels):
     return cmd
 
 
-def _run_build(cmd, timeout_s, procs, key, replacements):
+def local_build_env():
+    """The board's environment minus Depot's credentials: an on-box build client never needs them."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("DEPOT_")}
+
+
+def _run_build(cmd, timeout_s, procs, key, replacements, env=None):
     """Run one build command, streaming its tail; returns (killed, returncode, build_s, LineTail)."""
     tail = LineTail(replacements=replacements)
     started = time.monotonic()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                            text=True, errors="replace", start_new_session=True)
+                            text=True, errors="replace", start_new_session=True, env=env)
     procs.add(key, proc)
     timer = threading.Timer(timeout_s, lambda: procs.kill(key, "timeout"))
     timer.daemon = True
@@ -460,11 +468,13 @@ def build_image(ctx, tag, bcfg, labels, procs, key, replacements=(), on_backend=
             note("local")
             used = "local"
             extra_timeout = max(1.0, timeout_s - build_s)   # don't grant a second full build budget
-            killed, rc, extra_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), extra_timeout, procs, key, replacements)
+            killed, rc, extra_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), extra_timeout, procs, key, replacements,
+                                                   env=local_build_env())
             build_s = round(build_s + extra_s, 3)
     else:
         note("local")
-        killed, rc, build_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), timeout_s, procs, key, replacements)
+        killed, rc, build_s, tail = _run_build(_local_build_cmd(ctx, tag, bcfg, labels), timeout_s, procs, key, replacements,
+                                                env=local_build_env())
 
     result = {"ok": False, "stage": "build", "build_s": build_s, "image_bytes": None, "log_tail": tail.get(),
               "builder": used}

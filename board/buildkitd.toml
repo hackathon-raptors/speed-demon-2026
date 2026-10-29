@@ -1,10 +1,8 @@
-# BuildKit daemon config for the board's builder, passed at creation:
-#   docker buildx create --name speeddemon-builder --driver docker-container \
-#     --driver-opt image=moby/buildkit:v0.34.1 --driver-opt cpuset-cpus=12-19 \
-#     --driver-opt memory=16g --driver-opt memory-swap=16g \
-#     --buildkitd-config board/buildkitd.toml --bootstrap
-# (board.py setup-builder does exactly this.) Changing this file needs the builder
-# recreated: docker buildx rm speeddemon-builder, then board.py setup-builder.
+# BuildKit daemon config for the board's builder. board.py setup-builder mounts it read-only into
+# the rootless buildkitd container (speeddemon-builder-buildkitd) and passes --config; see
+# steps._rootless_run_cmd. Changing this file needs the builder
+# recreated: docker buildx rm speeddemon-builder && docker rm -f speeddemon-builder-buildkitd,
+# then board.py setup-builder.
 #
 # Field names are BuildKit's (docs/buildkitd.toml.md, v0.34.1). Sizes count the
 # builder's own cache only; loaded images live in dockerd and are pruned by the

@@ -28,7 +28,7 @@ always re-measured on the box you are actually scoring on.
      `~/.config/speeddemon/github-app.pem`.
    - `/root/.aws/credentials` (+ `config`) (0600) — the `board-put` S3 key (publisher + history mirror).
    - `/etc/speeddemon/board.env` (0600) — `DEPOT_TOKEN` + `DEPOT_PROJECT_ID`. Only needed if the builder
-     backend is Depot; the live board runs `backend: local`, so this is optional.
+     backend is Depot, which the live board uses (`builder.backend: "depot"`), so place it; without it every build falls back to the on-box builder.
 3. **The prod config** `/etc/speeddemon/board.json` (0600) and the **registry** it points at
    (`/srv/speeddemon/board/registry.json`, the Tally export). Keep a copy of both off-box; the registry is
    **not** in the mirror.
@@ -64,7 +64,7 @@ units. Re-run it safely if a step fails; set `SD_RECALIBRATE=1` to force a fresh
 ```
 cat /sys/devices/system/cpu/intel_pstate/no_turbo                      # 1
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor              # performance
-docker inspect buildx_buildkit_speeddemon-builder0 --format '{{.HostConfig.PidsLimit}}'   # 1024
+docker inspect speeddemon-builder-buildkitd --format '{{.HostConfig.Privileged}} {{.HostConfig.PidsLimit}}'   # false 1024
 findmnt /srv/speeddemon/work                                           # tmpfs, size=8g
 python3 /opt/speed-demon-2026/board/board.py reference-check --config /etc/speeddemon/board.json   # ok, drift <2%
 ```
