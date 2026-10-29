@@ -248,7 +248,9 @@ def run_once(tag, track, cmd, args, timer_bin, cgroups, timeout_s):
     try:
         digest = sha256_output(os.path.join(out_dir, args.output))
     except (ValueError, OSError) as exc:
-        result.update(ok=False, reason=f"{args.output} must be a regular file of at most 2 GB ({exc})")
+        # strerror, not str(exc): an OSError's text carries the host path, and reasons reach the public feed.
+        why = getattr(exc, "strerror", None) or exc
+        result.update(ok=False, reason=f"{args.output} must be a regular file of at most 2 GB ({why})")
         return result
     result["sha256"] = digest
     if args.expected_sha256 and digest != args.expected_sha256:

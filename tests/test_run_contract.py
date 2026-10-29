@@ -93,6 +93,7 @@ class RunContractTest(unittest.TestCase):
                 r, took = self.run_image(tag)
                 self.assertFalse(r["ok"], r)
                 self.assertIn("regular file", r["reason"])
+                self.assertNotIn("/", r["reason"], "a host path must never reach the public failure text")
                 self.assertLess(took, 30)
 
     def test_stderr_flood_is_bounded(self):
