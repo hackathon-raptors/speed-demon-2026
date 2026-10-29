@@ -362,7 +362,7 @@ class DepotFallbackTest(unittest.TestCase):
     def test_missing_depot_cli_falls_back(self):
         calls = []
 
-        def fake_run(cmd, timeout_s, procs, key, replacements):
+        def fake_run(cmd, timeout_s, procs, key, replacements, env=None):
             calls.append(cmd[0])
             if cmd[0] == "/nonexistent/depot":
                 raise FileNotFoundError(cmd[0])
@@ -447,7 +447,7 @@ class NativeCpuTest(unittest.TestCase):
     def test_force_local_skips_depot(self):
         calls = []
 
-        def fake_run(cmd, timeout_s, procs, key, replacements):
+        def fake_run(cmd, timeout_s, procs, key, replacements, env=None):
             calls.append(cmd[0])
             return "", 0, 0.1, LineTailStub()
 
