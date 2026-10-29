@@ -769,6 +769,8 @@ class Board:
                         st.box_tracks.append(tj.track)
                 job.rebuild_on_box = True
                 rec["failure"] = SIGILL_REBUILD
+                rec.setdefault("security", []).append(security.flag(
+                    "sigill_rebuild", "low", "a Depot-built run died on SIGILL; the track now builds on the box"))
                 log.warning("%s track %s hit SIGILL on a Depot-built image: rebuilding on the box", job.team, tj.track)
             self.record(rec)
             log.info("%s track %s at %s: %s", job.team, tj.track, job.commit[:12],
