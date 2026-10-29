@@ -22,6 +22,7 @@ RECENT_RUNS = 20
 PUBLIC_FIELDS = ("run_id", "commit", "pushed_at", "dispatched_at", "started_at", "ended_at", "queue_latency_s",
                  "ok", "stage", "gates", "T_s", "M_bytes", "S", "D", "K", "points", "static_axes",
                  "timeout_s", "build_s", "image_bytes", "failure")
+FAILURE_MAX_CHARS = 300      # public text a team can steer (it may echo their Dockerfile or git errors)
 
 
 def iso(t):
@@ -158,8 +159,16 @@ class Mirror:
 
 # -- the feed -------------------------------------------------------------------
 
+def clip(text, n=FAILURE_MAX_CHARS):
+    return text if not isinstance(text, str) or len(text) <= n else text[:n - 1] + "\u2026"
+
+
 def summarise(rec, with_logs=False):
+    """A record's public view. Build-log and stderr tails stay in the private history:
+    board.json is world-readable, so one team's output must never reach another."""
     out = {k: rec.get(k) for k in PUBLIC_FIELDS if k in rec}
+    if "failure" in out:
+        out["failure"] = clip(out["failure"])
     if with_logs:
         for k in ("build_log_tail", "stderr_tail"):
             if rec.get(k):
@@ -246,14 +255,14 @@ def build_feed(now, teams, fq, runtime, records, info):
             tracks[t] = {
                 "registered": t in team.tracks,
                 "best": summarise(slot["best"]) if slot["best"] else None,
-                "latest": summarise(slot["latest"], with_logs=True) if slot["latest"] else None,
+                "latest": summarise(slot["latest"]) if slot["latest"] else None,
                 "queue_position": queued["position"] if queued else None,
                 "queue_latency_s": latency,
             }
         entry = {
             "team": team.name,
             "slug": team.slug,
-            "watch": {"ok": not (st and st.watch_error), "error": (st.watch_error if st else "") or None,
+            "watch": {"ok": not (st and st.watch_error), "error": clip((st.watch_error if st else "") or None),
                       "head": (st.head if st else "") or None, "checked_at": iso(st.checked_at) if st and st.checked_at else None},
             "queue": {"in_flight": in_flight, "queued": queued},
             "tracks": tracks,

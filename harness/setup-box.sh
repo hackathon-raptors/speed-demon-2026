@@ -30,12 +30,25 @@ cat > /etc/docker/daemon.json <<'JSON'
   "ip6tables": false,
   "log-driver": "json-file",
   "log-opts": { "max-size": "10m", "max-file": "1" },
+  "no-new-privileges": true,
   "builder": { "gc": { "enabled": true, "defaultKeepStorage": "100GB" } }
 }
 JSON
+dockerd --validate --config-file /etc/docker/daemon.json
 systemctl restart docker
 docker info --format '{{.CgroupDriver}} cgroup v{{.CgroupVersion}}' | grep -q '^cgroupfs cgroup v2$' \
   || { echo "expected cgroupfs on cgroup v2"; exit 1; }
+
+echo "== kernel: hide kernel pointers, no unprivileged BPF, ptrace only of descendants"
+# Narrows what a process that escaped a container could learn or reach. None of it touches timing.
+cat > /etc/sysctl.d/90-speeddemon.conf <<'SYSCTL'
+kernel.dmesg_restrict = 1
+kernel.kptr_restrict = 2
+kernel.perf_event_paranoid = 3
+kernel.unprivileged_bpf_disabled = 1
+kernel.yama.ptrace_scope = 1
+SYSCTL
+sysctl -q --load /etc/sysctl.d/90-speeddemon.conf
 
 # SPEEDDEMON_TEST_HOST=1 skips the EX44-only steps on a functional test box (e.g. a cloud VM):
 # no hybrid-CPU topology and no intel_pstate there, so its numbers never count.

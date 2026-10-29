@@ -562,8 +562,9 @@ class RecordsTest(unittest.TestCase):
         entry = feed["teams"][0]
         self.assertEqual(entry["tracks"]["a"]["best"]["run_id"], "r2")
         self.assertEqual(entry["tracks"]["a"]["latest"]["run_id"], "r3")
-        self.assertEqual(entry["tracks"]["a"]["latest"]["build_log_tail"], ["error: x"])
+        self.assertNotIn("build_log_tail", entry["tracks"]["a"]["latest"])     # tails stay in the private history
         self.assertNotIn("build_log_tail", entry["tracks"]["a"]["best"])
+        self.assertNotIn("error: x", json.dumps(feed))
         self.assertIsNone(entry["tracks"]["b"]["latest"])
         self.assertEqual(entry["queue"]["queued"]["position"], 1)
         self.assertEqual(entry["queue"]["queued"]["eligible_at"], records.iso(900))
@@ -923,15 +924,20 @@ def _probe_docker():
 @unittest.skipIf(docker_env()[0] is None, docker_env()[1])
 class DockerEndToEndTest(unittest.TestCase):
     BUILDER = os.environ.get("SD_TEST_BUILDER", "sdboard-test")
+    # Colima's Ubuntu VM blocks unprivileged user namespaces, which rootless BuildKit needs, so the
+    # local default is buildx's docker-container driver; on the box run with SD_TEST_DRIVER=rootless.
+    DRIVER = os.environ.get("SD_TEST_DRIVER", "docker-container")
+    IMAGE = "moby/buildkit:v0.34.1" + ("-rootless" if DRIVER == "rootless" else "")
 
     @classmethod
     def tearDownClass(cls):
         if "SD_TEST_BUILDER" not in os.environ:
             subprocess.run(["docker", "buildx", "rm", cls.BUILDER], capture_output=True)
+            subprocess.run(["docker", "rm", "-f", f"{cls.BUILDER}-buildkitd"], capture_output=True)
 
     def builder_cfg(self, **extra):
         (_, _, ncpu), _ = docker_env()
-        cfg = {"name": self.BUILDER, "create": True, "image": board.DEFAULTS["builder"]["image"], "network": "host",
+        cfg = {"name": self.BUILDER, "create": True, "driver": self.DRIVER, "image": self.IMAGE, "network": "host",
                "cpuset": f"2-{ncpu - 1}" if ncpu >= 4 else "0", "memory": "2g", "timeout_s": 600,
                "image_max_bytes": 2 * 1024**3, "buildkitd_config": board.DEFAULTS["builder"]["buildkitd_config"]}
         cfg.update(extra)
@@ -967,7 +973,8 @@ class DockerEndToEndTest(unittest.TestCase):
                             "ref": {"T_s": 2.0, "M_bytes": 20e6, "S": 40, "D": 1}}}
             path = write_config(root, tracks, cgroups=cgroups, timer=timer, run_cpuset=run_cpus, min_interval_s=0,
                                 image_prefix="sdboard-test",
-                                builder={"name": self.BUILDER, "cpuset": build_cpus, "memory": "2g"})
+                                builder={"name": self.BUILDER, "cpuset": build_cpus, "memory": "2g",
+                                         "driver": self.DRIVER, "image": self.IMAGE})
             cfg = board.load_config(path)
             alpha = FakeRepo(root, "alpha")
             with open(os.path.join(REPO, "reference", "a_ingest.py"), encoding="utf-8") as f:

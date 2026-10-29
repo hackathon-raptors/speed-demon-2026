@@ -53,6 +53,49 @@ class BuildRegistry(unittest.TestCase):
         self.assertEqual(entries[0]["repo"], "https://github.com/acme/fixed")
         self.assertEqual(entries[0]["tracks"], ["b"])
 
+    def test_resubmission_to_another_owner_is_held(self):
+        held = []
+        entries, problems = tally_sync.build_registry(QUESTIONS, [
+            sub("s1", "2026-10-28T10:00:00Z", "Swift C", "https://github.com/acme/fast", ["A · Ingest"]),
+            sub("s2", "2026-10-29T10:00:00Z", "SWIFT C", "https://github.com/mallory/fast", ["A · Ingest"]),
+            sub("s3", "2026-10-29T11:00:00Z", "Swift C", "https://github.com/ACME/fast2", ["C · Join"]),
+        ], held=held)
+        self.assertEqual(entries[0]["repo"], "https://github.com/ACME/fast2")     # same owner, any case: applied
+        self.assertEqual([h["submission"] for h in held], ["s2"])
+        self.assertEqual((held[0]["pinned_owner"], held[0]["new_owner"]), ("acme", "mallory"))
+        self.assertTrue(any("held" in p for p in problems))
+
+    def test_extra_releases_a_held_owner_change(self):
+        entries, _ = tally_sync.build_registry(QUESTIONS, [
+            sub("s1", "2026-10-28T10:00:00Z", "Swift C", "https://github.com/acme/fast", ["A · Ingest"]),
+            sub("s2", "2026-10-29T10:00:00Z", "Swift C", "https://github.com/neworg/fast", ["A · Ingest"]),
+        ], extra=[{"team": "Swift C", "repo": "https://github.com/neworg/fast", "tracks": ["a"]}])
+        self.assertEqual(entries[0]["repo"], "https://github.com/neworg/fast")
+
+    def test_team_names_are_cleaned(self):
+        entries, _ = tally_sync.build_registry(QUESTIONS, [
+            sub("s1", "2026-10-28T10:00:00Z", "Evil‮Team​\x07  X" + "y" * 200, "https://github.com/a/b",
+                ["A · Ingest"]),
+        ])
+        name = entries[0]["team"]
+        self.assertEqual(name[:11], "EvilTeam Xy")
+        self.assertEqual(len(name), sources.NAME_MAX_CHARS)
+        self.assertEqual(sources.clean_name("did it run?"), "did it run?")
+
+    def test_held_submission_is_a_security_event_once(self):
+        d = tempfile.mkdtemp()
+        subs = [sub("s1", "2026-10-28T10:00:00Z", "T", "https://github.com/a/r", ["A · Ingest"]),
+                sub("s2", "2026-10-29T10:00:00Z", "T", "https://github.com/m/r", ["A · Ingest"])]
+        out = os.path.join(d, "registry.json")
+        with mock.patch.object(tally_sync, "fetch_submissions", return_value=(QUESTIONS, subs)), \
+                mock.patch.dict(os.environ, {"TALLY_API_KEY": "k"}):
+            for _ in range(2):
+                self.assertEqual(tally_sync.main(["--out", out, "--security-dir", d]), 0)
+        with open(os.path.join(d, "security.jsonl"), encoding="utf-8") as f:
+            events = [json.loads(line) for line in f]
+        self.assertEqual([(e["kind"], e["severity"]) for e in events], [("registry_takeover", "high")])
+        self.assertEqual(read(out)[0]["repo"], "https://github.com/a/r")
+
     def test_refused_entries_are_reported_not_written(self):
         entries, problems = tally_sync.build_registry(QUESTIONS, [
             sub("s1", "1", "No Repo", "https://gitlab.com/x/y", ["A · Ingest"]),

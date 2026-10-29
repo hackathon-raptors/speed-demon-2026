@@ -6,7 +6,11 @@ submission through the Tally API and writes the registry the board already polls
 reloads it on its next pass when the file changes.
 
 Rules:
-  - the latest submission per team wins (teams resubmit to fix a repo URL or tracks);
+  - the latest submission per team wins (teams resubmit to fix a repo URL or tracks), but the
+    team's first accepted submission pins the GitHub owner of its repo: a later one naming a
+    different owner is held, not applied, and logged as a private security event. Release it
+    by adding the entry to --extra;
+  - team names lose control, bidi and zero-width characters and are capped at 64 characters;
   - a submission the board would refuse (no name, not a GitHub URL, no tracks) is reported, not written;
   - --exclude names teams or submission ids to leave out (tests, disqualifications);
   - --extra merges organiser-added entries in the registry's own format, and they win over the form;
@@ -29,7 +33,7 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sources import TRACKS, normalise_repo, slugify  # noqa: E402
+from sources import TRACKS, clean_name, normalise_repo, repo_owner, slugify  # noqa: E402
 
 API = "https://api.tally.so"
 # The form's questions, found by title so a re-ordered form still syncs.
@@ -78,16 +82,17 @@ def tracks_from(answer):
     return sorted(t for t in out if t in TRACKS)
 
 
-def build_registry(questions, submissions, exclude=(), extra=()):
-    """Returns (entries, problems). Latest submission per team slug wins; extras win over the form."""
+def build_registry(questions, submissions, exclude=(), extra=(), held=None):
+    """Returns (entries, problems). Latest submission per team slug wins; extras win over the form.
+    A submission that would move a team to another repo owner goes to `held` (a list), not the registry."""
     q_team, q_repo, q_tracks = question_ids(questions)
     excluded = {str(x).strip().lower() for x in exclude}
-    latest, problems = {}, []
+    latest, problems, owners = {}, [], {}
     for s in sorted(submissions, key=lambda s: (s.get("submittedAt") or "", s.get("id") or "")):
         if not s.get("isCompleted", True):
             continue
         ans = {r.get("questionId"): r.get("answer") for r in s.get("responses") or []}
-        team = str(ans.get(q_team) or "").strip()
+        team = clean_name(ans.get(q_team))
         sid = s.get("id") or "?"
         if not team:
             problems.append(f"submission {sid}: no team name")
@@ -95,7 +100,7 @@ def build_registry(questions, submissions, exclude=(), extra=()):
         if team.lower() in excluded or sid.lower() in excluded:
             continue
         repo = str(ans.get(q_repo) or "").strip()
-        _, err = normalise_repo(repo)
+        clone_url, err = normalise_repo(repo)
         if err:
             problems.append(f"{team} ({sid}): {err}")
             continue
@@ -103,8 +108,17 @@ def build_registry(questions, submissions, exclude=(), extra=()):
         if not tracks:
             problems.append(f"{team} ({sid}): no tracks ticked")
             continue
-        latest[slugify(team)] = {"team": team, "repo": repo, "tracks": tracks, "submission": sid,
-                                 "submitted_at": s.get("submittedAt")}
+        slug, owner = slugify(team), repo_owner(clone_url)
+        first = owners.setdefault(slug, owner)
+        if owner != first:
+            problems.append(f"{team} ({sid}): held, the team was registered with a repo owned by {first!r}, "
+                            f"this submission names {owner!r}")
+            if held is not None:
+                held.append({"team": team, "submission": sid, "submitted_at": s.get("submittedAt"),
+                             "pinned_owner": first, "new_owner": owner, "repo": clone_url})
+            continue
+        latest[slug] = {"team": team, "repo": repo, "tracks": tracks, "submission": sid,
+                        "submitted_at": s.get("submittedAt")}
     for e in extra:
         if isinstance(e, dict) and str(e.get("team") or "").strip():
             latest[slugify(str(e["team"]).strip())] = e
@@ -159,6 +173,7 @@ def main(argv=None):
     ap.add_argument("--key-file")
     ap.add_argument("--exclude", help="JSON list of team names or submission ids to leave out")
     ap.add_argument("--extra", help="JSON list of registry entries to add or override")
+    ap.add_argument("--security-dir", help="board state dir: held submissions are logged to its security.jsonl")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     key = os.environ.get("TALLY_API_KEY", "")
@@ -170,12 +185,21 @@ def main(argv=None):
         return 2
     try:
         questions, subs = fetch_submissions(a.form, key)
-        entries, problems = build_registry(questions, subs, read_list(a.exclude), read_list(a.extra))
+        held = []
+        entries, problems = build_registry(questions, subs, read_list(a.exclude), read_list(a.extra), held=held)
     except Exception as exc:  # a Tally outage must never touch the registry
         print(f"tally-sync: fetch failed, registry left as is: {exc}", file=sys.stderr)
         return 1
     for p in problems:
         print(f"tally-sync: skipped {p}", file=sys.stderr)
+    if held and a.security_dir and not a.dry_run:
+        import security
+        log = security.SecurityLog(a.security_dir)
+        for h in held:
+            log.emit("registry_takeover", "high",
+                     f"submission {h['submission']} names a repo owned by {h['new_owner']!r}; the team was "
+                     f"registered with {h['pinned_owner']!r}. Held. Release: add the entry to registry-extra.json",
+                     team=h["team"], key=f"registry_takeover:{h['submission']}")
     if not entries and existing_count(a.out):
         print("tally-sync: the form returned no teams but the registry has some; left as is", file=sys.stderr)
         return 1

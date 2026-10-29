@@ -48,6 +48,7 @@ import github_app  # noqa: E402
 import fairqueue  # noqa: E402
 import guards  # noqa: E402
 import records  # noqa: E402
+import security  # noqa: E402
 import sources  # noqa: E402
 import steps  # noqa: E402
 
@@ -77,6 +78,8 @@ DEFAULTS = {
     "run_cpuset": "0-11",
     "run_timeout_factor": 3.0,
     "skip_unchanged_reference": True,            # an untouched starter track is the reference: report it, never run it
+    "too_fast_floor_s": 0.05,                    # a scored run under this T raises a private "too_fast" flag (alert only)
+    "push_churn_per_hour": 20,                   # new commits per team per hour before a private "push_churn" flag
     "max_ready": None,                           # built jobs waiting for the runner; None = builder.max_concurrent
     "restart_attempts": 2,
     "feed_interval_s": 10,
@@ -85,7 +88,8 @@ DEFAULTS = {
     "builder": {
         "name": "speeddemon-builder",            # "" = the default builder (no isolation; local use only)
         "create": True,
-        "image": "moby/buildkit:v0.34.1",
+        "driver": "rootless",                    # "rootless" (unprivileged, our own container) or "docker-container"
+        "image": "moby/buildkit:v0.34.1-rootless",
         "network": "host",                       # the BuildKit container's, for base-image pulls only
         "cpuset": "12-19",
         "memory": "16g",
@@ -266,6 +270,7 @@ class TrackJob:
     build_started_at: float | None = None
     build_ended_at: float | None = None
     builder: str = ""               # backend that produced the image: "depot" or "local"
+    flags: list = dataclasses.field(default_factory=list)   # private security flags (security.flag), never public
 
     @property
     def ok(self):
@@ -307,9 +312,14 @@ class Board:
         self.registry_sig = None
         os.makedirs(cfg["state_dir"], exist_ok=True)
         self.history = records.History(cfg["history"])
+        self.security = security.SecurityLog(cfg["state_dir"])
+        self._pushes = {}             # slug -> monotonic times of recent new commits, for the churn flag
         self.watch_path = os.path.join(cfg["state_dir"], "watch.json")
         self.mirror = records.Mirror(cfg["mirror_command"], {"SD_HISTORY": cfg["history"], "SD_FEED": cfg["feed"],
-                                                             "SD_WATCH": self.watch_path}, cfg["mirror_timeout_s"],
+                                                             "SD_WATCH": self.watch_path,
+                                                             "SD_SECURITY": self.security.path,
+                                                             "SD_SECURITY_SUMMARY": self.security.summary_path},
+                                     cfg["mirror_timeout_s"],
                                      cwd=cfg.get("config_dir"))
         self.building = {}            # slug -> Job being fetched/built
         self.ready = []               # built Jobs waiting for the runner
@@ -486,7 +496,7 @@ class Board:
                 except Exception as exc:
                     results[team.slug] = ("", f"ls-remote failed ({type(exc).__name__})")
         now = time.time()
-        queued = []
+        queued, new_heads = [], []
         with self.cv:
             for slug, (sha, err) in results.items():
                 st = self.fq.team(slug)
@@ -495,14 +505,27 @@ class Board:
                     continue
                 if self.fq.observe(slug, sha, now):
                     queued.append((self.teams[slug].name if slug in self.teams else slug, sha))
+                    new_heads.append((slug, sha))
                 if not sha:
                     st.watch_error = f"no {self.cfg['branch']} branch yet"
             self.cv.notify_all()
         self.save_watch()
         for name, sha in queued:
             log.info("queued %s at %s", name, sha[:12])
+        self._note_churn([slug for slug, _ in new_heads], now)
         self.feed_dirty.set()
         return queued
+
+    def _note_churn(self, slugs, now):
+        """A private low flag when a team pushes more new commits in an hour than anyone iterates."""
+        limit = int(self.cfg["push_churn_per_hour"])
+        for slug in slugs:
+            times = [t for t in self._pushes.get(slug, []) if now - t < 3600] + [now]
+            self._pushes[slug] = times
+            if len(times) > limit:
+                team = self.teams[slug].name if slug in self.teams else slug
+                self.security.emit("push_churn", "low", f"{len(times)} new commits in the last hour", team=team,
+                                   key=f"push_churn:{slug}:{int(now // 3600)}")
 
     # -- building -------------------------------------------------------------
 
@@ -597,6 +620,7 @@ class Board:
             reason = steps.check_track(checkout, track, self.allowlist)
             if reason:
                 tj.stage, tj.reason = "check", reason
+                tj.flags += security.dockerfile_flags(reason)
                 return tj
             if self.cfg["skip_unchanged_reference"] and steps.unchanged_reference(os.path.join(checkout, f"track-{track}")):
                 tj.stage, tj.reason = "unchanged", UNCHANGED
@@ -626,8 +650,16 @@ class Board:
             if cmd is None:
                 steps.remove_image(tj.tag)
                 tj.stage, tj.reason = "image", why
+                if "VOLUME" in why:
+                    tj.flags.append(security.flag("image_volume", "medium", why))
                 return tj
             tj.cmd = cmd
+            if steps.image_has_healthcheck(tj.tag):
+                tj.flags.append(security.flag("image_healthcheck", "medium",
+                                              "image declares a HEALTHCHECK (disabled at run time)"))
+            blobs = security.suspicious_files(track_dir)
+            if blobs:
+                tj.flags.append(security.flag("review_blob", "low", "S review: " + ", ".join(blobs)))
             tj.axes = axes.static_axes(checkout, track, tcfg["ref"], cpuset=self.cfg["builder"]["cpuset"])
             tj.stage = "built"
             return tj
@@ -920,6 +952,9 @@ class Board:
                "static_axes": tj.axes["source"] if tj.axes else None, "timeout_s": timeout_s, "builder": tj.builder or None,
                "board": {"runs": 1, "run_cpuset": self.cfg["run_cpuset"], "dataset": self.cfg["dataset_label"],
                          "timeout_factor": self.cfg["run_timeout_factor"]}}
+        flags = list(tj.flags) + security.run_flags(r, float(self.cfg["too_fast_floor_s"] or 0))
+        if flags:
+            rec["security"] = flags                 # private: history only, never in board.json
         if not tj.ok:
             rec.update(stage=tj.stage, ok=False, failure=tj.reason)
             if tj.log_tail:
@@ -951,6 +986,11 @@ class Board:
     def record(self, rec):
         """Append to the history (fsynced), refresh the feed, then mirror both off the box."""
         self.history.append(rec)
+        try:
+            self.security.emit_flags(rec.get("security"), team=rec.get("team"), track=rec.get("track"),
+                                     run_id=rec.get("run_id"), commit=rec.get("commit"))
+        except Exception:
+            log.exception("could not write a security event")
         self.write_feed()
         self.mirror.trigger()
 

@@ -19,11 +19,15 @@ DIRECTIVE_RE = re.compile(r"^\s*#\s*(?P<key>[a-z]+)\s*=", re.IGNORECASE)
 
 
 def logical_lines(text):
-    """Dockerfile instructions with backslash continuations joined and comments dropped."""
+    """Dockerfile instructions with backslash continuations joined and comments dropped.
+
+    BuildKit drops comment and blank lines inside a continuation too, so they must not
+    end the join here, or the rest of the instruction escapes the check.
+    """
     buf = ""
     for raw in text.splitlines():
         stripped = raw.strip()
-        if not buf and stripped.startswith("#"):
+        if stripped.startswith("#") or (buf and not stripped):
             continue
         if stripped.endswith("\\"):
             buf += stripped[:-1] + " "
@@ -89,6 +93,8 @@ def check(dockerfile_text, allowlist):
     for key in parser_directives(dockerfile_text):
         if key == "syntax":
             problems.append("a `# syntax=` directive loads a custom BuildKit frontend; remove it")
+        elif key != "check":
+            problems.append(f"the `# {key}=` parser directive is not allowed; remove it")
 
     def is_stage(ref):
         return ref.lower() in stages or (ref.isdigit() and int(ref) < len(stages))

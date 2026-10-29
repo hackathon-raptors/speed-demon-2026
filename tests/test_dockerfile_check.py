@@ -51,6 +51,22 @@ class DockerfileCheckTest(unittest.TestCase):
         text = f"FROM {PY}\nCOPY \\\n  --from=redis:7 /data /x\n"
         self.assertTrue(problems(text))
 
+    def test_comment_or_blank_inside_continuation_does_not_split_it(self):
+        self.assertTrue(problems(f"FROM {PY}\nCOPY \\\n# note\n--from=busybox:1.37 /bin/busybox /bb\n"))
+        self.assertTrue(problems(f"FROM {PY}\nCOPY \\\n   # note\n--from=busybox:1.37 /bin/busybox /bb\n"))
+        self.assertTrue(problems(f"FROM {PY}\nCOPY \\\n\n--from=busybox:1.37 /bin/busybox /bb\n"))
+        self.assertTrue(problems(f"FROM {PY}\nRUN \\\n# x\n--network=host curl x\n"))
+        self.assertEqual(problems(f"FROM {PY}\nRUN echo a \\\n# note\n  && echo b\n"), [])
+
+    def test_only_the_check_directive_is_allowed(self):
+        self.assertTrue(problems(f"# escape=`\nFROM {PY}\nRUN echo \\\nFROM busybox:1.37\n"))
+        self.assertTrue(problems(f"#Escape = `\nFROM {PY}\n"))
+        self.assertEqual(problems(f"# check=skip=all\nFROM {PY}\n"), [])
+
+    def test_heredoc_stays_allowed(self):
+        self.assertEqual(problems(f"FROM {PY}\nRUN <<EOF\n#!/bin/sh\necho hi\nEOF\n"), [])
+        self.assertEqual(problems(f"FROM {PY}\nCOPY <<EOF /app/x.txt\nhello\nEOF\n"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

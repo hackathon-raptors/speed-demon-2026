@@ -13,8 +13,10 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
+import threading
 import time
 import uuid
 
@@ -28,6 +30,13 @@ IMAGE_MAX_BYTES = 2 * 1024**3
 NOBODY = "65534"
 CGROUP_PARENT = "speeddemon"
 MOUNT_POINTS = {"/data", "/out", "/sd", "/sd-bin", "/tmp"}
+STDERR_KEEP_BYTES = 64 * 1024
+OUTPUT_MAX_BYTES = 2 * 1024**3
+TIMING_MAX_BYTES = 4096
+
+
+class ImageRefused(Exception):
+    """The image itself breaks the contract (not a build failure)."""
 
 
 def sh(args, timeout=None, check=True):
@@ -59,6 +68,46 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+def open_regular(path, max_bytes):
+    """Open a file the submission wrote, refusing anything but a regular file of bounded size.
+
+    O_NOFOLLOW + O_NONBLOCK: a symlink or a FIFO must never be followed or block the host."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode):
+        os.close(fd)
+        raise ValueError("not a regular file")
+    if st.st_size > max_bytes:
+        os.close(fd)
+        raise ValueError(f"{st.st_size} bytes, over the {max_bytes}-byte cap")
+    return os.fdopen(fd, "rb")
+
+
+def sha256_output(path):
+    h = hashlib.sha256()
+    with open_regular(path, OUTPUT_MAX_BYTES) as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+class TailReader(threading.Thread):
+    """Drains a pipe, keeping only the last `keep` bytes, so a flood cannot grow the caller."""
+
+    def __init__(self, pipe, keep=STDERR_KEEP_BYTES):
+        super().__init__(daemon=True)
+        self.pipe, self.keep, self.buf = pipe, keep, bytearray()
+
+    def run(self):
+        for chunk in iter(lambda: self.pipe.read(1 << 16), b""):
+            self.buf += chunk
+            if len(self.buf) > 2 * self.keep:
+                del self.buf[:-self.keep]
+
+    def text(self):
+        return bytes(self.buf[-self.keep:]).decode("utf-8", errors="replace")
+
+
 def build(context, tag, allowlist_path):
     with open(os.path.join(context, "Dockerfile"), encoding="utf-8") as f:
         dockerfile = f.read()
@@ -82,6 +131,9 @@ def build(context, tag, allowlist_path):
 
 def image_command(tag):
     cfg = json.loads(sh(["docker", "image", "inspect", "-f", "{{json .Config}}", tag]).stdout)
+    if cfg.get("Volumes"):
+        # --read-only does not cover a VOLUME: it would be a writable, uncapped anonymous volume.
+        raise ImageRefused(f"the image declares VOLUME {sorted(cfg['Volumes'])}; remove it, /out and /tmp are the writable places")
     cmd = (cfg.get("Entrypoint") or []) + (cfg.get("Cmd") or [])
     if not cmd:
         raise SystemExit(f"{tag} has no ENTRYPOINT or CMD")
@@ -116,6 +168,9 @@ def run_once(tag, track, cmd, args, timer_bin, cgroups, timeout_s):
     name = f"sd-{run_id}"
     docker_run = [
         "docker", "run", "--name", name,
+        # Nothing from the image may start a second process or pick the timer's user: the timer is
+        # the only root process in the container, and only it may write /sd.
+        "--no-healthcheck", "--user=0:0",
         f"--cgroup-parent=/{CGROUP_PARENT}/{run_id}",
         f"--cpuset-cpus={args.cpuset}", "--cpuset-mems=0",
         "--memory=8g", "--memory-swap=8g", "--pids-limit=512",
@@ -132,21 +187,26 @@ def run_once(tag, track, cmd, args, timer_bin, cgroups, timeout_s):
         tag, "/sd/timing.json", NOBODY, NOBODY, "--", *cmd,
     ]
     started = time.monotonic()
-    proc = subprocess.Popen(docker_run, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(docker_run, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    tail = TailReader(proc.stderr)
+    tail.start()
     timed_out = False
     try:
-        _, stderr = proc.communicate(timeout=timeout_s + 30)
+        proc.wait(timeout=timeout_s + 30)
     except subprocess.TimeoutExpired:
         timed_out = True
         sh(["docker", "kill", name], check=False)
-        _, stderr = proc.communicate()
+        proc.wait()
+    tail.join(timeout=30)
+    proc.stderr.close()
+    stderr = tail.text()
     outside_s = time.monotonic() - started
     # The mount points docker creates for /data, /out, /sd and /sd-bin are ours, not the submission's.
     fs_diff = [
         line for line in sh(["docker", "diff", name], check=False).stdout.splitlines()
         if line.strip() and line.split(maxsplit=1)[-1] not in MOUNT_POINTS
     ]
-    sh(["docker", "rm", "-f", name], check=False)
+    sh(["docker", "rm", "-fv", name], check=False)
     peak = cgroups.peak_and_remove(run_id)
 
     result = {"run_id": run_id, "outside_s": round(outside_s, 4), "peak_bytes": peak, "fs_diff": fs_diff}
@@ -158,8 +218,8 @@ def run_once(tag, track, cmd, args, timer_bin, cgroups, timeout_s):
     # timing.json truncated. An unreadable record means the run cannot be timed, so it
     # cannot be scored: fail it as the submission's fault, not the board's.
     try:
-        with open(timing_path, encoding="utf-8") as f:
-            timing = json.load(f)
+        with open_regular(timing_path, TIMING_MAX_BYTES) as f:
+            timing = json.loads(f.read().decode("utf-8"))
         wall_s = int(timing["wall_ns"]) / 1e9
         exit_code, term_signal = int(timing["exit_code"]), int(timing["signal"])
     except (ValueError, OSError, KeyError, TypeError):
@@ -167,6 +227,14 @@ def run_once(tag, track, cmd, args, timer_bin, cgroups, timeout_s):
                       stderr=stderr[-2000:])
         return result
     result.update(wall_s=round(wall_s, 6), exit_code=exit_code, signal=term_signal)
+    # sd-timer exits with its child's status, so the container's exit status must agree with the
+    # record. A mismatch means the record is not the one the timer wrote: never score it.
+    expected_rc = 128 + term_signal if term_signal else exit_code
+    if proc.returncode != expected_rc:
+        result.update(ok=False, tamper=True, container_rc=proc.returncode,
+                      reason="the timing record does not match the container's exit status")
+        return result
+    result["timing_gap_s"] = round(outside_s - wall_s, 4)
     if wall_s > timeout_s:
         result.update(ok=False, reason="timeout")
         return result
@@ -177,7 +245,11 @@ def run_once(tag, track, cmd, args, timer_bin, cgroups, timeout_s):
     if outputs != [args.output]:
         result.update(ok=False, reason=f"/out must hold exactly {args.output}, found {outputs}")
         return result
-    digest = sha256_file(os.path.join(out_dir, args.output))
+    try:
+        digest = sha256_output(os.path.join(out_dir, args.output))
+    except (ValueError, OSError) as exc:
+        result.update(ok=False, reason=f"{args.output} must be a regular file of at most 2 GB ({exc})")
+        return result
     result["sha256"] = digest
     if args.expected_sha256 and digest != args.expected_sha256:
         result.update(ok=False, reason="hash mismatch")
@@ -214,7 +286,11 @@ def main():
     tag = args.tag or f"speeddemon/{os.path.basename(os.path.abspath(args.context))}-{args.track}:latest"
     report = {"track": args.track, "tag": tag, "build": build(args.context, tag, args.allowlist)}
     if report["build"]["ok"]:
-        cmd = image_command(tag)
+        try:
+            cmd = image_command(tag)
+        except ImageRefused as exc:
+            report["build"] = {"ok": False, "stage": "image", "problems": [str(exc)]}
+    if report["build"]["ok"]:
         cgroups = CgroupReader(args.cgroups)
         prewarm(args.data)
         batches = []

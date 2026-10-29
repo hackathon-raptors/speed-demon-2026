@@ -25,6 +25,7 @@ GITHUB_SSH_RE = re.compile(
     r"^(?:ssh://)?git@github\.com[:/](?P<owner>[A-Za-z0-9][A-Za-z0-9-]{0,38})/(?P<repo>[A-Za-z0-9._-]+?)(?:\.git)?/?$",
     re.IGNORECASE)
 SHA_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+NAME_MAX_CHARS = 64
 TOKEN_PATTERNS = [re.compile(r"gh[pousr]_[A-Za-z0-9]{20,255}"), re.compile(r"github_pat_[A-Za-z0-9_]{20,255}")]
 
 
@@ -35,6 +36,19 @@ class Team:
     repo: str           # normalised clone URL
     tracks: list
     discord: str = ""
+
+
+def clean_name(name):
+    """A team name safe to show anywhere: no control, bidi or zero-width characters, one space
+    between words, at most NAME_MAX_CHARS. Lookalike and right-to-left tricks stop here."""
+    kept = "".join(ch for ch in str(name or "") if unicodedata.category(ch) not in ("Cc", "Cf", "Co", "Cs", "Zl", "Zp"))
+    return re.sub(r"\s+", " ", kept).strip()[:NAME_MAX_CHARS].strip()
+
+
+def repo_owner(url):
+    """The GitHub owner of a normalised clone URL, casefolded; "" for anything else."""
+    m = re.match(r"^https://github\.com/([^/]+)/", url or "")
+    return m.group(1).casefold() if m else ""
 
 
 def slugify(name):
@@ -82,7 +96,7 @@ def load_registry(path, allow_local=False):
         if not isinstance(e, dict):
             problems.append(f"entry {i}: not an object")
             continue
-        name = str(e.get("team") or "").strip()
+        name = clean_name(e.get("team"))
         if not name:
             problems.append(f"entry {i}: no team name")
             continue

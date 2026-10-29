@@ -112,8 +112,23 @@ def unchanged_reference(track_dir):
 
 # -- builder ------------------------------------------------------------------
 
+ROOTLESS_SOCKET = "unix:///run/user/1000/buildkit/buildkitd.sock"
+ROOTLESS_CONFIG = "/home/user/.config/buildkit/buildkitd.toml"
+
+
 def builder_exists(name):
     return sh(["docker", "buildx", "inspect", name], timeout=60).returncode == 0
+
+
+def builder_driver(bcfg):
+    return bcfg.get("driver") or "rootless"
+
+
+def builder_container(bcfg):
+    """The container that runs the builder's buildkitd."""
+    if builder_driver(bcfg) == "rootless":
+        return f"{bcfg['name']}-buildkitd"
+    return f"buildx_buildkit_{bcfg['name']}0"
 
 
 def _cap_builder_pids(name, bcfg, required=True):
@@ -122,10 +137,60 @@ def _cap_builder_pids(name, bcfg, required=True):
     # the builder container directly; it persists in HostConfig across stop/start/reboot. On reuse
     # (required=False) this just re-asserts a cap already set at create time, so a transient docker hiccup
     # must not brick a board start; at create time (required=True) it must succeed.
-    proc = sh(["docker", "update", "--pids-limit", str(bcfg.get("pids", 1024)), f"buildx_buildkit_{name}0"], timeout=30)
+    proc = sh(["docker", "update", "--pids-limit", str(bcfg.get("pids", 1024)), builder_container(bcfg)], timeout=30)
     if proc.returncode != 0 and required:
         raise RuntimeError(f"could not set pids cap on builder {name}: {proc.stderr.strip()[-500:]}")
     return proc.returncode == 0
+
+
+def _rootless_run_cmd(bcfg):
+    # buildx's docker-container driver always makes its buildkitd container privileged, and a team
+    # can steer a build onto the box (native CPU flags, a SIGILL rebuild). So the box's builder is
+    # rootless BuildKit in a container we start ourselves: uid 1000, every capability dropped but
+    # the two newuidmap needs, pids-capped. It builds its own user namespace, which needs seccomp,
+    # AppArmor and the /proc masks off for this one container; nothing in it is privileged.
+    cmd = ["docker", "run", "-d", "--name", builder_container(bcfg), "--restart=unless-stopped",
+           "--label", "dev.speeddemon.builder=1",
+           "--security-opt", "seccomp=unconfined", "--security-opt", "apparmor=unconfined",
+           "--security-opt", "systempaths=unconfined", "--security-opt", "no-new-privileges=false",
+           "--cap-drop=ALL", "--cap-add=SETUID", "--cap-add=SETGID",
+           f"--cpuset-cpus={bcfg['cpuset']}", f"--memory={bcfg['memory']}", f"--memory-swap={bcfg['memory']}",
+           f"--pids-limit={bcfg.get('pids', 1024)}", f"--network={bcfg.get('network', 'host')}"]
+    daemon_args = ["--addr", ROOTLESS_SOCKET]
+    if bcfg.get("buildkitd_config"):
+        cmd += ["-v", f"{os.path.abspath(bcfg['buildkitd_config'])}:{ROOTLESS_CONFIG}:ro"]
+        daemon_args += ["--config", ROOTLESS_CONFIG]
+    return cmd + [bcfg["image"], *daemon_args]
+
+
+def _ensure_rootless(bcfg):
+    name, ctr = bcfg["name"], builder_container(bcfg)
+    state = sh(["docker", "inspect", "-f", "{{.State.Status}}", ctr], timeout=30).stdout.strip()
+    created = not state
+    if created:
+        proc = sh(_rootless_run_cmd(bcfg), timeout=600)
+        if proc.returncode != 0:
+            raise RuntimeError(f"could not start the builder daemon {ctr}: {proc.stderr.strip()[-1000:]}")
+    elif state != "running":
+        sh(["docker", "start", ctr], timeout=60)
+    if builder_exists(name):
+        info = sh(["docker", "buildx", "inspect", name], timeout=60).stdout
+        if not re.search(r"^Driver:\s+remote\s*$", info, re.MULTILINE):
+            raise RuntimeError(f"builder {name} exists but is not the rootless one; run: docker buildx rm {name}, "
+                               "then board.py setup-builder")
+    else:
+        proc = sh(["docker", "buildx", "create", "--name", name, "--driver", "remote", f"docker-container://{ctr}"],
+                  timeout=120)
+        if proc.returncode != 0:
+            raise RuntimeError(f"docker buildx create failed: {proc.stderr.strip()[-1000:]}")
+    deadline = time.monotonic() + 60
+    while sh(["docker", "buildx", "inspect", "--bootstrap", name], timeout=60).returncode != 0:
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"builder {name} did not come up within 60 s; see docker logs {ctr}")
+        time.sleep(2)
+    _cap_builder_pids(name, bcfg, required=created)
+    return (f"{'created' if created else 'reused'} rootless builder {name} (container {ctr}, cpuset {bcfg['cpuset']}, "
+            f"memory {bcfg['memory']}, pids {bcfg.get('pids', 1024)}, unprivileged)")
 
 
 def ensure_builder(bcfg):
@@ -133,6 +198,8 @@ def ensure_builder(bcfg):
     name = bcfg["name"]
     if not name:
         return "using the default builder (no cpuset or memory isolation: local use only)"
+    if builder_driver(bcfg) == "rootless":
+        return _ensure_rootless(bcfg)
     if builder_exists(name):
         _cap_builder_pids(name, bcfg, required=False)
         return f"builder {name} exists"
@@ -430,8 +497,15 @@ def image_entry(tag):
         return run_submission.image_command(tag), ""
     except SystemExit:
         return None, "image has no ENTRYPOINT or CMD"
+    except run_submission.ImageRefused as exc:
+        return None, str(exc)
     except (subprocess.CalledProcessError, ValueError) as exc:
         return None, f"could not inspect the image ({type(exc).__name__})"
+
+
+def image_has_healthcheck(tag):
+    proc = sh(["docker", "image", "inspect", "-f", "{{json .Config.Healthcheck}}", tag], timeout=60)
+    return proc.returncode == 0 and proc.stdout.strip() not in ("", "null")
 
 
 def remove_image(tag):
