@@ -258,7 +258,7 @@ SHA-256 of the seed-1 files, to check a local run of the generator and of your s
 | `queries.txt` | `77ef7ffc59afde051006b02a2ce8e4c090fbbfbf101acd6f862d0f8e298d39f9` | `930ba8716d7a9b9b962b24f5c9d11b5e0b1efb1b9c24f775f889e50c639f16aa` |
 | `results.txt` | `f86973c210228141bcb6f1f1b10188ad2a9b65f71e7cd7cf4590b38de4e80927` | `eeeec1e9319da98a6f3c664c78f93e7078fd603c25c2bb3027174e81e3638a8f` |
 
-The query side grows faster than the corpus. Going from `sample` to `full` multiplies the documents and the queries by 10 each, and posting lists grow about 10 times too, so the work per query grows with them. On the reference the query phase is about 14% of the run at `sample` (0.18 s of 1.25 s) and about 56% at `full` (14.9 s of 26.7 s). The live leaderboard runs on `sample`; final scoring runs on a `full`-size holdout.
+The query side grows faster than the corpus. Going from `sample` to `full` multiplies the documents and the queries by 10 each, and posting lists grow about 10 times too, so the work per query grows with them. On the reference the query phase is about 14% of the run at `sample` (0.18 s of 1.25 s) and about 56% at `full` (14.9 s of 26.7 s). The live leaderboard runs on the `full` public dataset (seed 1); final scoring runs on a `full`-size holdout.
 
 ## 6. Banned libraries
 

@@ -61,8 +61,8 @@ What it does, in order:
    S (source size) is **measured**, never stubbed; a track whose S cannot be measured is flagged
    (`stage: "axes"`), not silently scored.
 3. **Per track, in batches of `--batch-size` (default 10):** clone each frozen commit (pinned, not the
-   tip), check + build + run 5× on the holdout (capped at `--timeout-factor`×T_ref, default 3× = the
-   board's published cap), measure S/D, score K + points against the holdout anchor. After each batch,
+   tip), check + build + run 5× on the holdout (capped at `--timeout-factor`×T_ref, default 10× = the
+   published final-scoring gate; the board uses 3×), measure S/D, score K + points against the holdout anchor. After each batch,
    re-run the reference; if it drifted >2% from the batch's "before", discard the batch and **rescore up
    to `--rescore-limit` (2) times**.
 

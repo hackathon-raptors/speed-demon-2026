@@ -344,7 +344,7 @@ def main(argv=None):
     sc.add_argument("--run-cpuset", default="0-11")
     sc.add_argument("--tools-cpuset", default="12-19")
     sc.add_argument("--batch-size", type=int, default=10)
-    sc.add_argument("--timeout-factor", type=float, default=3.0, help="team run cap = this x T_ref (board's published 3x)")
+    sc.add_argument("--timeout-factor", type=float, default=10.0, help="team run cap = this x T_ref (the published final-scoring gate, 10x; the board uses 3x)")
     sc.add_argument("--drift-threshold", type=float, default=0.02)
     sc.add_argument("--ref-runs", type=int, default=5)
     sc.add_argument("--team-runs", type=int, default=5)
