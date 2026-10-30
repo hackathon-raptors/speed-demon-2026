@@ -53,5 +53,26 @@ class HealthTest(unittest.TestCase):
         self.assertEqual(set(back), {"generated_at", "interval_s", "box", "fields", "points"})
 
 
+    def test_rapl_delta_wraps(self):
+        self.assertEqual(health.energy_delta_j((1_000_000, 10_000_000), (3_000_000, 10_000_000)), 2.0)
+        self.assertEqual(health.energy_delta_j((9_000_000, 10_000_000), (1_000_000, 10_000_000)), 2.0)
+        self.assertEqual(health.energy_delta_j(None, (1, 10)), 0.0)
+
+    def test_energy_survives_restart_and_resets_at_kickoff(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "energy.json")
+            kick = "2026-10-30T15:00:00Z"
+            t_kick = 1793372400                   # 2026-10-30T15:00:00Z
+            log = health.EnergyLog(path, kick)
+            log.add(100.0, t_kick - 3600)
+            log.save()
+            again = health.EnergyLog(path, kick)
+            self.assertEqual((again.since, again.joules), ("2026-10-30T14:00:00Z", 100.0))
+            again.add(5.0, t_kick + 10)           # first sample after kickoff: count from zero
+            self.assertEqual((again.since, again.joules), (kick, 5.0))
+            again.add(5.0, t_kick + 15)
+            self.assertEqual(again.joules, 10.0)
+
+
 if __name__ == "__main__":
     unittest.main()
