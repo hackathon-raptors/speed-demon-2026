@@ -27,6 +27,22 @@ def _module():
         return None
 
 
+# scc names folded into the language a reader knows; Dockerfile is build glue every entry has.
+LANGUAGE_ALIASES = {"C Header": "C", "C++ Header": "C++"}
+NOT_A_SOLUTION_LANGUAGE = {"Dockerfile"}
+
+
+def code_languages(per_language):
+    """{language: code lines} for the languages S counts, from static_axes.measure's per_language."""
+    out = {}
+    for name, stats in per_language.items():
+        if not stats.get("counted") or not stats.get("code") or name in NOT_A_SOLUTION_LANGUAGE:
+            continue
+        name = LANGUAGE_ALIASES.get(name, name)
+        out[name] = out.get(name, 0) + int(stats["code"])
+    return out
+
+
 def static_axes(checkout_dir, track, ref, cpuset=None):
     """Return {"S": int, "D": int, "source": "measured" | "stubbed", "detail": str}.
 
@@ -45,7 +61,8 @@ def static_axes(checkout_dir, track, ref, cpuset=None):
         report = measure(track_dir, cpuset=cpuset)
         notes = report.get("notes") or []
         return {"S": int(report["S_lines"]), "D": int(report["D"]), "source": "measured",
-                "detail": f"{len(notes)} note(s)" + (f": {notes[0][:160]}" if notes else "")}
+                "detail": f"{len(notes)} note(s)" + (f": {notes[0][:160]}" if notes else ""),
+                "langs": code_languages(report.get("per_language") or {})}
     except Exception as exc:  # a broken measurement must not stop the run; the stub keeps K computable
         log.exception("static_axes.measure failed for %s", track_dir)
         return {"S": int(ref["S"]), "D": int(ref["D"]), "source": "stubbed",

@@ -299,11 +299,24 @@ def epoch(iso_text):
     return calendar.timegm(time.strptime(iso_text, "%Y-%m-%dT%H:%M:%SZ")) if iso_text else None
 
 
+LANGUAGE_SHARE = 0.10     # a language counts in an entry from 10% of its code lines
+
+
+def entry_languages(langs):
+    """The languages an entry is written in: each with at least LANGUAGE_SHARE of its code lines."""
+    if not langs:
+        return []
+    total = sum(langs.values())
+    if total <= 0:                      # the build-image fallback carries no line counts
+        return list(langs)
+    return [name for name, lines in langs.items() if lines / total >= LANGUAGE_SHARE]
+
+
 def build_stats(now, teams, records, starts, ends):
     """stats.json for the /board panel: event-wide aggregates from the history.
 
     Public like board.json, so it uses only what board.json already shows (team names, K, T,
-    points) plus counts. Languages are counted per scored (team, track), never mapped to a team.
+    points) plus counts. Languages count distinct teams and are never mapped to a team.
     """
     start, end = epoch(starts), epoch(ends)
     track_recs = [r for r in records if r.get("track")]
@@ -335,8 +348,8 @@ def build_stats(now, teams, records, starts, ends):
             if cur is None or r["K"] > cur["K"]:
                 best[r["track"]] = {"K": r["K"], "T_s": r.get("T_s"), "points": r.get("points"),
                                     "team": r.get("team"), "set_at": r.get("recorded_at")}
-            if r.get("lang"):
-                langs.setdefault(r["lang"], set()).add((r["team_slug"], r["track"]))
+            for name in entry_languages(r.get("langs")):
+                langs.setdefault(name, set()).add(r["team_slug"])
     return {"generated_at": iso(now), "starts": starts, "ends": ends,
             "counters": {"teams": len(teams), "teams_scored": len(scored_teams),
                          "teams_active_1h": len(active), "pushes": len(pushes),

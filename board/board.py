@@ -273,7 +273,7 @@ class TrackJob:
     build_ended_at: float | None = None
     builder: str = ""               # backend that produced the image: "depot" or "local"
     flags: list = dataclasses.field(default_factory=list)   # private security flags (security.flag), never public
-    lang: str = ""                  # language of the build image, for the aggregate stats only
+    lang: str = ""                  # build-image language: the stats' fallback when S is stubbed
 
     @property
     def ok(self):
@@ -956,7 +956,7 @@ class Board:
                          "correctness": None, "timeout": None, "sandbox": None},
                "T_s": None, "M_bytes": None, "S": None, "D": None, "K": None, "points": None,
                "static_axes": tj.axes["source"] if tj.axes else None, "timeout_s": timeout_s, "builder": tj.builder or None,
-               "lang": tj.lang or None,
+               "langs": (tj.axes or {}).get("langs") or ({tj.lang: 0} if tj.lang else None),
                "board": {"runs": 1, "run_cpuset": self.cfg["run_cpuset"], "dataset": self.cfg["dataset_label"],
                          "timeout_factor": self.cfg["run_timeout_factor"]}}
         flags = list(tj.flags) + security.run_flags(r, float(self.cfg["too_fast_floor_s"] or 0))
