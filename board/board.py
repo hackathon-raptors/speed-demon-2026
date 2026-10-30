@@ -58,6 +58,8 @@ GB = guards.GB
 DEFAULTS = {
     "event": "Speed Demon 2026",
     "dataset_label": "full public dataset (kickoff release)",
+    "event_starts": "2026-10-30T15:00:00Z",       # kickoff and code freeze: the stats' runs-per-hour window
+    "event_ends": "2026-11-02T15:00:00Z",
     "registry": "/srv/speeddemon/board/registry.json",
     "state_dir": "/srv/speeddemon/board/state",
     "history": "/srv/speeddemon/board/state/history.jsonl",
@@ -271,6 +273,7 @@ class TrackJob:
     build_ended_at: float | None = None
     builder: str = ""               # backend that produced the image: "depot" or "local"
     flags: list = dataclasses.field(default_factory=list)   # private security flags (security.flag), never public
+    lang: str = ""                  # language of the build image, for the aggregate stats only
 
     @property
     def ok(self):
@@ -657,6 +660,7 @@ class Board:
             if steps.image_has_healthcheck(tj.tag):
                 tj.flags.append(security.flag("image_healthcheck", "medium",
                                               "image declares a HEALTHCHECK (disabled at run time)"))
+            tj.lang = steps.track_language(track_dir)
             blobs = security.suspicious_files(track_dir)
             if blobs:
                 tj.flags.append(security.flag("review_blob", "low", "S review: " + ", ".join(blobs)))
@@ -952,6 +956,7 @@ class Board:
                          "correctness": None, "timeout": None, "sandbox": None},
                "T_s": None, "M_bytes": None, "S": None, "D": None, "K": None, "points": None,
                "static_axes": tj.axes["source"] if tj.axes else None, "timeout_s": timeout_s, "builder": tj.builder or None,
+               "lang": tj.lang or None,
                "board": {"runs": 1, "run_cpuset": self.cfg["run_cpuset"], "dataset": self.cfg["dataset_label"],
                          "timeout_factor": self.cfg["run_timeout_factor"]}}
         flags = list(tj.flags) + security.run_flags(r, float(self.cfg["too_fast_floor_s"] or 0))
@@ -1025,6 +1030,9 @@ class Board:
                               "image_max_bytes": self.cfg["builder"]["image_max_bytes"]}}
             feed = records.build_feed(time.time(), teams, fq, runtime, self.history.snapshot(), info)
             records.atomic_write_json(self.cfg["feed"], feed)
+            stats = records.build_stats(time.time(), teams, self.history.snapshot(),
+                                        self.cfg["event_starts"], self.cfg["event_ends"])
+            records.atomic_write_json(os.path.join(os.path.dirname(self.cfg["feed"]), "stats.json"), stats)
             return feed
 
     # -- disk -----------------------------------------------------------------

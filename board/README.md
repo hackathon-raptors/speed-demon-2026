@@ -36,6 +36,7 @@ K and points come from `harness/scoring.py`. S and D come from `harness/static_a
 | `speeddemon-board.service` | The board systemd unit (Type=notify + WatchdogSec) |
 | `publish.sh`, `speeddemon-board-publish.service` | Pushes board.json to S3 every 5 s; coupled to the board |
 | `health.py`, `speeddemon-health.service` | Box CPU, memory, load and temperature (last 30 min) into `health.json`; `publish.sh` uploads it for the /board panel |
+| `records.build_stats` → `stats.json` | Event stats for the /board panel (counters, runs per hour, track records, languages), written with board.json; public |
 
 Tests are in `tests/test_board.py`. The Docker ones build and run the Track A reference from a bare git repo, and skip without Docker.
 

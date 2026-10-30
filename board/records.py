@@ -6,6 +6,7 @@ it (plus the live queue) and replaced atomically, so a reader never sees half
 a file. Neither ever holds more than the last 40 lines of a team's own build
 output, and only inside that team's record.
 """
+import calendar
 import json
 import logging
 import os
@@ -290,3 +291,58 @@ def build_feed(now, teams, fq, runtime, records, info):
         },
         "teams": out_teams,
     }
+
+
+# -- the stats ------------------------------------------------------------------
+
+def epoch(iso_text):
+    return calendar.timegm(time.strptime(iso_text, "%Y-%m-%dT%H:%M:%SZ")) if iso_text else None
+
+
+def build_stats(now, teams, records, starts, ends):
+    """stats.json for the /board panel: event-wide aggregates from the history.
+
+    Public like board.json, so it uses only what board.json already shows (team names, K, T,
+    points) plus counts. Languages are counted per scored (team, track), never mapped to a team.
+    """
+    start, end = epoch(starts), epoch(ends)
+    track_recs = [r for r in records if r.get("track")]
+    hour = 3600
+    first = min([start] + [epoch(r["recorded_at"]) for r in track_recs if r.get("recorded_at")])
+    first -= first % hour
+    last = int(min(now, end))
+    bins = {}
+    t = first
+    while t <= last:
+        bins[t] = [0, 0]
+        t += hour
+    active, scored_teams, pushes = set(), set(), set()
+    best = {}
+    langs = {}
+    for r in track_recs:
+        at = epoch(r.get("recorded_at"))
+        if at is None:
+            continue
+        b = bins.get(at - at % hour)
+        if b is not None and r.get("stage") != "unchanged" and r.get("stage") != "check":
+            b[0 if r.get("ok") else 1] += 1
+        pushes.add((r["team_slug"], r.get("commit")))
+        if now - at <= hour:
+            active.add(r["team_slug"])
+        if r.get("ok") and r.get("K") is not None:
+            scored_teams.add(r["team_slug"])
+            cur = best.get(r["track"])
+            if cur is None or r["K"] > cur["K"]:
+                best[r["track"]] = {"K": r["K"], "T_s": r.get("T_s"), "points": r.get("points"),
+                                    "team": r.get("team"), "set_at": r.get("recorded_at")}
+            if r.get("lang"):
+                langs.setdefault(r["lang"], set()).add((r["team_slug"], r["track"]))
+    return {"generated_at": iso(now), "starts": starts, "ends": ends,
+            "counters": {"teams": len(teams), "teams_scored": len(scored_teams),
+                         "teams_active_1h": len(active), "pushes": len(pushes),
+                         "runs": sum(sum(v) for v in bins.values())},
+            "runs_per_hour": {"fields": ["hour", "scored", "failed"],
+                              "points": [[k, v[0], v[1]] for k, v in sorted(bins.items())]},
+            "records": {t: best[t] for t in sorted(best)},
+            "languages": sorted(([k, len(v)] for k, v in langs.items()), key=lambda kv: (-kv[1], kv[0]))}
+

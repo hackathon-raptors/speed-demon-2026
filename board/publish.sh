@@ -24,12 +24,16 @@ sec="${5:-$(dirname "$(dirname "$feed")")/state/security_summary.json}"
 sec_dest="${6:-s3://raptors-speeddemon-board-history/2026/security_summary.json}"
 sec_seen=""
 health="$(dirname "$feed")/health.json"
+stats="$(dirname "$feed")/stats.json"
 while true; do
   [ -f "$feed" ] && aws s3 cp "$feed" "s3://raptors.dev/speeddemon.dev/2026/$prefix/board.json" \
     --cache-control max-age=5 --content-type application/json --only-show-errors 2>>"$errlog"
-  # Box health (health.py, machine numbers only) for the /board panel, when it is being written.
-  [ -f "$health" ] && aws s3 cp "$health" "s3://raptors.dev/speeddemon.dev/2026/$prefix/health.json" \
-    --cache-control max-age=5 --content-type application/json --only-show-errors 2>>"$errlog"
+  # Box health (health.py) and event stats (the board's build_stats) for the /board panel. Both are
+  # public by design: machine numbers, counts and what board.json already shows.
+  for f in "$health" "$stats"; do
+    [ -f "$f" ] && aws s3 cp "$f" "s3://raptors.dev/speeddemon.dev/2026/$prefix/$(basename "$f")" \
+      --cache-control max-age=5 --content-type application/json --only-show-errors 2>>"$errlog"
+  done
   if [ -f "$sec" ] && [ "$sec_dest" != "none" ]; then
     m=$(stat -c %Y "$sec" 2>/dev/null || stat -f %m "$sec")
     if [ "$m" != "$sec_seen" ] && aws s3 cp "$sec" "$sec_dest" --content-type application/json \

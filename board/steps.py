@@ -87,6 +87,32 @@ def check_track(checkout, track, allowlist):
     return ""
 
 
+# Build image -> language, for the public stats' "languages in use" (an aggregate, never per team).
+# Runtime-only images (debian, the JRE, the .NET runtime) name no language and are skipped.
+LANGUAGES = (("halloumee/speed-demon-rust:", "Rust"), ("rust:", "Rust"), ("golang:", "Go"), ("gcc:", "C/C++"),
+             ("eclipse-temurin:25-jdk", "JVM"), ("ghcr.io/graalvm/", "JVM"), ("node:", "JavaScript"),
+             ("mcr.microsoft.com/dotnet/sdk:", ".NET"), ("swift:", "Swift"), ("haskell:", "Haskell"),
+             ("python:", "Python"))
+
+
+def track_language(track_dir):
+    """The language of the first build image in track_dir/Dockerfile, or "" if none is known."""
+    try:
+        with open(os.path.join(track_dir, "Dockerfile"), encoding="utf-8", errors="replace") as f:
+            text = f.read(DOCKERFILE_MAX_BYTES)
+    except OSError:
+        return ""
+    for line in dockerfile_check.logical_lines(text):
+        parts = line.split()
+        if len(parts) < 2 or parts[0].upper() != "FROM":
+            continue
+        image = parts[1].lower()
+        for prefix, lang in LANGUAGES:
+            if image.startswith(prefix):
+                return lang
+    return ""
+
+
 DOC_FILES = {".speed-demon.toml"}
 
 
