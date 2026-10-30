@@ -1,0 +1,13 @@
+[Unit]
+Description=Speed Demon 2026 tape (history.jsonl -> public tape.json -> S3)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/speed-demon-2026
+ExecStart=/usr/bin/python3 /opt/speed-demon-2026/board/tape.py --history /srv/speeddemon/board/state/history.jsonl \
+    --out /srv/speeddemon/board/public/tape.json --config /etc/speeddemon/board.json
+ExecStart=/usr/bin/aws s3 cp /srv/speeddemon/board/public/tape.json s3://raptors.dev/speeddemon.dev/2026/board/tape.json \
+    --cache-control max-age=5 --content-type application/json --only-show-errors
+AllowedCPUs=12-19
+Nice=10
+TimeoutStartSec=60

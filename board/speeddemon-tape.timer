@@ -1,0 +1,10 @@
+[Unit]
+Description=Rebuild the Speed Demon tape every 10 s
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target
