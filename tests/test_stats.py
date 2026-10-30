@@ -55,10 +55,12 @@ class BuildStatsTest(unittest.TestCase):
         self.assertEqual((s["counters"]["teams"], s["counters"]["teams_scored"], s["counters"]["pushes"], s["counters"]["runs"]), (1, 1, 1, 1))
         self.assertEqual(s["records"]["a"]["team"], "A")
 
-    def test_feed_never_carries_the_language(self):
-        out = records.summarise(rec("a", "a", 60, K=5.0))
+    def test_feed_carries_language_names_not_line_counts(self):
+        out = records.summarise(rec("a", "a", 60, K=5.0, langs={"Rust": 900, "C": 120, "Shell": 5}))
         self.assertNotIn("langs", out)
-        self.assertNotIn("Rust", json.dumps(out))
+        self.assertEqual(out["lang"], ["Rust", "C"])          # biggest first, under 10% dropped
+        self.assertNotIn("900", json.dumps(out))
+        self.assertNotIn("lang", records.summarise(rec("a", "a", 60, K=5.0, langs={})))
 
     def test_ten_percent_rule(self):
         self.assertEqual(sorted(records.entry_languages({"Rust": 900, "Python": 120})), ["Python", "Rust"])

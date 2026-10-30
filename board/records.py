@@ -168,6 +168,8 @@ def summarise(rec, with_logs=False):
     """A record's public view. Build-log and stderr tails stay in the private history:
     board.json is world-readable, so one team's output must never reach another."""
     out = {k: rec.get(k) for k in PUBLIC_FIELDS if k in rec}
+    if rec.get("langs"):                # language names only, for the scorecard badges; line counts stay private
+        out["lang"] = entry_languages(rec["langs"])
     if "failure" in out:
         out["failure"] = clip(out["failure"])
     if with_logs:
@@ -309,14 +311,14 @@ def entry_languages(langs):
     total = sum(langs.values())
     if total <= 0:                      # the build-image fallback carries no line counts
         return list(langs)
-    return [name for name, lines in langs.items() if lines / total >= LANGUAGE_SHARE]
+    return [name for name, lines in sorted(langs.items(), key=lambda kv: -kv[1]) if lines / total >= LANGUAGE_SHARE]
 
 
 def build_stats(now, teams, records, starts, ends, exclude=()):
     """stats.json for the /board panel: event-wide aggregates from the history.
 
     Public like board.json, so it uses only what board.json already shows (team names, K, T,
-    points) plus counts. Languages count distinct teams and are never mapped to a team.
+    points) plus counts. Languages count distinct teams here; the per-run names are in board.json.
     """
     start, end = epoch(starts), epoch(ends)
     exclude = set(exclude)                    # entries on the board that are not teams (the reference baseline)
