@@ -312,14 +312,16 @@ def entry_languages(langs):
     return [name for name, lines in langs.items() if lines / total >= LANGUAGE_SHARE]
 
 
-def build_stats(now, teams, records, starts, ends):
+def build_stats(now, teams, records, starts, ends, exclude=()):
     """stats.json for the /board panel: event-wide aggregates from the history.
 
     Public like board.json, so it uses only what board.json already shows (team names, K, T,
     points) plus counts. Languages count distinct teams and are never mapped to a team.
     """
     start, end = epoch(starts), epoch(ends)
-    track_recs = [r for r in records if r.get("track")]
+    exclude = set(exclude)                    # entries on the board that are not teams (the reference baseline)
+    teams = [t for t in teams if getattr(t, "name", None) not in exclude]
+    track_recs = [r for r in records if r.get("track") and r.get("team") not in exclude]
     hour = 3600
     first = min([start] + [epoch(r["recorded_at"]) for r in track_recs if r.get("recorded_at")])
     first -= first % hour

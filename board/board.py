@@ -58,6 +58,7 @@ GB = guards.GB
 DEFAULTS = {
     "event": "Speed Demon 2026",
     "dataset_label": "full public dataset (kickoff release)",
+    "stats_exclude": [],                          # board entries left out of stats.json (e.g. the reference baseline)
     "event_starts": "2026-10-30T15:00:00Z",       # kickoff and code freeze: the stats' runs-per-hour window
     "event_ends": "2026-11-02T15:00:00Z",
     "registry": "/srv/speeddemon/board/registry.json",
@@ -1031,7 +1032,7 @@ class Board:
             feed = records.build_feed(time.time(), teams, fq, runtime, self.history.snapshot(), info)
             records.atomic_write_json(self.cfg["feed"], feed)
             stats = records.build_stats(time.time(), teams, self.history.snapshot(),
-                                        self.cfg["event_starts"], self.cfg["event_ends"])
+                                        self.cfg["event_starts"], self.cfg["event_ends"], self.cfg["stats_exclude"])
             records.atomic_write_json(os.path.join(os.path.dirname(self.cfg["feed"]), "stats.json"), stats)
             return feed
 

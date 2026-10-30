@@ -47,6 +47,14 @@ class BuildStatsTest(unittest.TestCase):
         s = records.build_stats(T0 + 600, [], [rec("a", "a", 300, K=1.0)], START, END)
         self.assertEqual(s["counters"]["teams_active_1h"], 1)
 
+    def test_baseline_is_not_counted(self):
+        import types
+        teams = [types.SimpleNamespace(name="A"), types.SimpleNamespace(name="REF")]
+        recs = [rec("a", "a", 60, K=5.0), rec("ref", "a", 70, K=1.0, commit="r1"), rec("ref", "b", 80, K=1.0, commit="r1")]
+        s = records.build_stats(T0 + 3 * 3600, teams, recs, START, END, exclude=["REF"])
+        self.assertEqual((s["counters"]["teams"], s["counters"]["teams_scored"], s["counters"]["pushes"], s["counters"]["runs"]), (1, 1, 1, 1))
+        self.assertEqual(s["records"]["a"]["team"], "A")
+
     def test_feed_never_carries_the_language(self):
         out = records.summarise(rec("a", "a", 60, K=5.0))
         self.assertNotIn("langs", out)
