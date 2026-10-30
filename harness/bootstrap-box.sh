@@ -108,7 +108,7 @@ for f in history.jsonl watch.json; do
 done
 
 say "10. install units (enable, do NOT start — you start at the right moment)"
-install -m 0644 "$CODE/board/speeddemon-board.service" "$CODE/board/speeddemon-board-publish.service" /etc/systemd/system/
+install -m 0644 "$CODE/board/speeddemon-board.service" "$CODE/board/speeddemon-board-publish.service" "$CODE/board/speeddemon-health.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable speeddemon-board >/dev/null
 

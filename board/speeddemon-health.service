@@ -1,0 +1,22 @@
+# Speed Demon 2026 box health: samples CPU, memory, load and temperature every 5 s into
+# health.json next to board.json; publish.sh uploads it for the /board panel. Runs on the
+# E-cores at the lowest priority, so it never shares a core with a timed run. Install:
+#   install -m 0644 /opt/speed-demon-2026/board/speeddemon-health.service /etc/systemd/system/
+#   systemctl enable --now speeddemon-health
+[Unit]
+Description=Speed Demon 2026 box health (health.json for the /board panel)
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/speed-demon-2026
+ExecStart=/usr/bin/python3 /opt/speed-demon-2026/board/health.py --out /srv/speeddemon/board/public/health.json
+Restart=always
+RestartSec=5
+AllowedCPUs=12-19
+Nice=19
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

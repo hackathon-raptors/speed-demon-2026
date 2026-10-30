@@ -23,8 +23,12 @@ mkdir -p "$(dirname "$errlog")" 2>/dev/null || true
 sec="${5:-$(dirname "$(dirname "$feed")")/state/security_summary.json}"
 sec_dest="${6:-s3://raptors-speeddemon-board-history/2026/security_summary.json}"
 sec_seen=""
+health="$(dirname "$feed")/health.json"
 while true; do
   [ -f "$feed" ] && aws s3 cp "$feed" "s3://raptors.dev/speeddemon.dev/2026/$prefix/board.json" \
+    --cache-control max-age=5 --content-type application/json --only-show-errors 2>>"$errlog"
+  # Box health (health.py, machine numbers only) for the /board panel, when it is being written.
+  [ -f "$health" ] && aws s3 cp "$health" "s3://raptors.dev/speeddemon.dev/2026/$prefix/health.json" \
     --cache-control max-age=5 --content-type application/json --only-show-errors 2>>"$errlog"
   if [ -f "$sec" ] && [ "$sec_dest" != "none" ]; then
     m=$(stat -c %Y "$sec" 2>/dev/null || stat -f %m "$sec")
