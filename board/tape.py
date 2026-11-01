@@ -4,19 +4,22 @@ The browser only ever sees the current board, so it cannot tell how far a run mo
 replays the whole private history in order, with the board's own rule for a best run (highest
 points, then K), and writes the last events as a small public tape.json:
 
-  {"generated_at": ..., "events": [newest first, at most --keep]}
+  {"generated_at": ..., "events": [newest first, at most --keep], "climbers": [top 3 of the last hour]}
   event = {"at", "slug", "team", "tk": "a".."d" | "all", "pts", "gain", "move", "rank"}  a new best
         | {"at", "slug", "team", "tk", "fail": "<gate>"}                                   a failed run
 
 gain and move compare with the team's previous best and rank (null on a first score). An "all" event
 follows a new best when it moved the team in Overall (geomean of its best three tracks). Only names,
 tracks, points, ranks and gate names go out, all of which board.json already shows; log tails never do.
+climbers ranks teams by the track places gained in new bests over the last hour (summed over tracks A-D,
+then by points gained): {"slug", "team", "climb", "gain", "tracks"}.
 Run by speeddemon-tape.timer every 10 s, which uploads the file next to board.json.
 
     python3 board/tape.py --history /srv/speeddemon/board/state/history.jsonl \
         --out /srv/speeddemon/board/public/tape.json --config /etc/speeddemon/board.json
 """
 import argparse
+import datetime
 import json
 import math
 import os
@@ -76,7 +79,29 @@ def replay(rows, exclude=(), keep=50):
         elif not r.get("ok") and r.get("stage") not in SKIP_STAGES:
             gate = next((g for g, v in (r.get("gates") or {}).items() if v is False), None)
             events.append({"at": at, "slug": slug, "team": names[slug], "tk": tk, "fail": gate or r.get("stage") or "failed"})
-    return events[-keep:][::-1]
+    return events[-keep:][::-1] if keep else events
+
+
+def _epoch(iso):
+    try:
+        return datetime.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def climbers(events, now, window_s=3600, top=3):
+    """The teams that gained the most track places in new bests within window_s before now."""
+    by = {}
+    for e in events:
+        at = _epoch(e.get("at"))
+        if e.get("fail") or e.get("tk") not in TRACKS or not e.get("move") or e["move"] <= 0 or at is None or now - at > window_s:
+            continue
+        c = by.setdefault(e["slug"], {"slug": e["slug"], "team": e["team"], "climb": 0, "gain": 0.0, "tracks": []})
+        c["climb"] += e["move"]
+        c["gain"] = round(c["gain"] + (e.get("gain") or 0), 4)
+        if e["tk"] not in c["tracks"]:
+            c["tracks"].append(e["tk"])
+    return sorted(by.values(), key=lambda c: (-c["climb"], -c["gain"]))[:top]
 
 
 def main():
@@ -97,7 +122,9 @@ def main():
                 rows.append(json.loads(line))
             except ValueError:
                 continue               # a torn last line while the board appends
-    body = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "events": replay(rows, exclude, a.keep)}
+    events = replay(rows, exclude, keep=0)
+    body = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "events": events[-a.keep:][::-1],
+            "climbers": climbers(events, time.time())}
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(a.out), prefix=".tape-")
     with os.fdopen(fd, "w") as f:
         json.dump(body, f, separators=(",", ":"))
