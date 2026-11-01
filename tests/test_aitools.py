@@ -51,12 +51,13 @@ class Aggregate(unittest.TestCase):
                "C": {"tools": ["Cursor"], "models": []},
                "D": {"tools": [], "models": []}}
         overall = {"A": 80.0, "B": 70.0, "C": 60.0, "D": 50.0}
-        out = aitools.aggregate(res, overall)
+        out = aitools.aggregate(res, overall, min_teams=2)
         names = [r["name"] for r in out["tools"]]
         self.assertEqual(names, ["Claude Code", "other"])            # Kiro and Cursor fold into other (2 teams)
         cc = out["tools"][0]
-        self.assertEqual((cc["teams"], cc["median_overall"], cc["best_overall"], cc["share"]), (2, 75.0, 80.0, 0.5))
-        self.assertEqual(out["models"], [{"name": "Claude Opus 5.5", "teams": 2, "median_overall": 75.0, "best_overall": 80.0}])
+        self.assertEqual((cc["teams"], cc["median_overall"], cc["share"]), (2, 75.0, 0.5))
+        self.assertNotIn("best_overall", cc)
+        self.assertEqual(out["models"], [{"name": "Claude Opus 5.5", "teams": 2, "median_overall": 75.0}])
         self.assertEqual((out["teams_detected"], out["none"]["teams"]), (3, 1))
         self.assertNotIn('"A"', str(out))
 

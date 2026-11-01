@@ -8,12 +8,13 @@ AGENTS.md, .cursor/ ...). Chat copy-paste leaves no trace, so the counts are a l
 The public file carries aggregates only, joined with each team's Overall from board.json:
 
   {"generated_at", "teams_scanned", "teams_detected",
-   "tools":  [{"name", "teams", "share", "median_overall", "best_overall", "in_top10"}],
-   "models": [{"name", "teams", "median_overall", "best_overall"}],
+   "tools":  [{"name", "teams", "share", "median_overall", "in_top10"}],
+   "models": [{"name", "teams", "median_overall"}],
    "none":   {"teams", "median_overall"}}
 
-No team names or slugs go out, and a tool or model seen in fewer than --min-teams teams is folded
-into "other" so no single team can be picked out. The per-team detail stays in --private on the box.
+No team names or slugs go out. There is no best score per tool either: Overall is public, so a best
+would name its team. A tool or model seen in fewer than --min-teams teams (default 3) is folded into
+"other" so no small group can be picked out. The per-team detail stays in --private on the box.
 A repo that fails to fetch keeps its last result. Run by speeddemon-aitools.timer.
 
     python3 board/aitools.py --registry /srv/speeddemon/board/registry.json \
@@ -148,7 +149,7 @@ def overall_by_team(board, exclude=()):
     return out
 
 
-def aggregate(results, overall_of, min_teams=2):
+def aggregate(results, overall_of, min_teams=3):
     scored = sorted((o for o in overall_of.values() if o is not None), reverse=True)
     top10 = scored[9] if len(scored) >= 10 else (scored[-1] if scored else None)
 
@@ -156,7 +157,6 @@ def aggregate(results, overall_of, min_teams=2):
         os_ = [overall_of.get(t) for t in teams if overall_of.get(t) is not None]
         return {"teams": len(teams),
                 "median_overall": round(statistics.median(os_), 2) if os_ else None,
-                "best_overall": round(max(os_), 2) if os_ else None,
                 "in_top10": sum(1 for o in os_ if top10 is not None and o >= top10)}
 
     def table(key):
@@ -203,7 +203,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--private", required=True)
     ap.add_argument("--workers", type=int, default=6)
-    ap.add_argument("--min-teams", type=int, default=2)
+    ap.add_argument("--min-teams", type=int, default=3)
     a = ap.parse_args()
     cfg = json.load(open(a.config)) if a.config else {}
     exclude = set(cfg.get("stats_exclude") or [])
