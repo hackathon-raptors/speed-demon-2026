@@ -13,6 +13,9 @@ follows a new best when it moved the team in Overall (geomean of its best three 
 tracks, points, ranks and gate names go out, all of which board.json already shows; log tails never do.
 climbers ranks teams by the track places gained in new bests over the last hour (summed over tracks A-D,
 then by points gained): {"slug", "team", "climb", "gain", "tracks"}.
+crowns follows who held #1 on each track and in Overall since the first score:
+  {"a": {"segs": [{"slug", "team", "from"}...], "held": [{"slug", "team", "s"}, top 3 by seconds held]}, ...}
+A segment runs until the next one starts, the last one until generated_at.
 Run by speeddemon-tape.timer every 10 s, which uploads the file next to board.json.
 
     python3 board/tape.py --history /srv/speeddemon/board/state/history.jsonl \
@@ -40,9 +43,23 @@ def overall(bests):
     return math.exp(sum(math.log(v) for v in pts) / 3)
 
 
-def replay(rows, exclude=(), keep=50):
+def replay(rows, exclude=(), keep=50, crowns=None):
+    """New-best and failed-run events; with a crowns dict, also the #1 holder changes per track and 'all'."""
     best = {}                         # slug -> {track: (points, K)}
     names, events = {}, []
+    holder = {}
+
+    def crown(k, at):
+        if k == "all":
+            scored = [(o, s) for s, b in best.items() if (o := overall(b)) is not None]
+        else:
+            scored = [(b[k], s) for s, b in best.items() if k in b]
+        if not scored:
+            return
+        top = max(scored)[1]
+        if holder.get(k) != top:
+            holder[k] = top
+            crowns.setdefault(k, []).append({"slug": top, "team": names[top], "from": at})
 
     def track_rank(slug, tk):
         mine = best[slug][tk]
@@ -69,6 +86,9 @@ def replay(rows, exclude=(), keep=50):
             was_all, _ = overall_rank(slug)
             best.setdefault(slug, {})[tk] = new
             rank = track_rank(slug, tk)
+            if crowns is not None:
+                crown(tk, at)
+                crown("all", at)
             events.append({"at": at, "slug": slug, "team": names[slug], "tk": tk, "pts": round(new[0], 4),
                            "gain": None if was is None else round(new[0] - was[0], 4),
                            "move": None if was_rank is None else was_rank - rank, "rank": rank})
@@ -87,6 +107,21 @@ def _epoch(iso):
         return datetime.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
     except ValueError:
         return None
+
+
+def crown_summary(crowns, now, keep=200, top=3):
+    """Per key: the last `keep` segments and the top holders by total seconds held."""
+    out = {}
+    for k, segs in crowns.items():
+        held = {}
+        for i, seg in enumerate(segs):
+            start, end = _epoch(seg["from"]), _epoch(segs[i + 1]["from"]) if i + 1 < len(segs) else now
+            if start is None or end is None:
+                continue
+            h = held.setdefault(seg["slug"], {"slug": seg["slug"], "team": seg["team"], "s": 0})
+            h["s"] += max(0, int(end - start))
+        out[k] = {"segs": segs[-keep:], "held": sorted(held.values(), key=lambda h: -h["s"])[:top]}
+    return out
 
 
 def climbers(events, now, window_s=3600, top=3):
@@ -122,9 +157,11 @@ def main():
                 rows.append(json.loads(line))
             except ValueError:
                 continue               # a torn last line while the board appends
-    events = replay(rows, exclude, keep=0)
-    body = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "events": events[-a.keep:][::-1],
-            "climbers": climbers(events, time.time())}
+    crowns = {}
+    events = replay(rows, exclude, keep=0, crowns=crowns)
+    now = time.time()
+    body = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)), "events": events[-a.keep:][::-1],
+            "climbers": climbers(events, now), "crowns": crown_summary(crowns, now)}
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(a.out), prefix=".tape-")
     with os.fdopen(fd, "w") as f:
         json.dump(body, f, separators=(",", ":"))

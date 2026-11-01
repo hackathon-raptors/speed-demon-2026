@@ -31,5 +31,21 @@ class Climbers(unittest.TestCase):
         self.assertEqual([c["slug"] for c in tape.climbers(events, self.NOW)], ["q", "r", "p"])
 
 
+
+class Crowns(unittest.TestCase):
+    def row(self, slug, tk, pts, at):
+        return {"team_slug": slug, "team": slug.upper(), "track": tk, "ok": True, "points": pts, "K": pts, "ended_at": at}
+
+    def test_holder_changes_and_time_held(self):
+        rows = [self.row("x", "a", 50, "2026-10-31T10:00:00Z"), self.row("y", "a", 40, "2026-10-31T10:30:00Z"),
+                self.row("y", "a", 60, "2026-10-31T11:00:00Z"), self.row("x", "a", 55, "2026-10-31T11:10:00Z")]
+        crowns = {}
+        tape.replay(rows, keep=0, crowns=crowns)
+        self.assertEqual([(c["slug"], c["from"]) for c in crowns["a"]], [("x", "2026-10-31T10:00:00Z"), ("y", "2026-10-31T11:00:00Z")])
+        out = tape.crown_summary(crowns, tape._epoch("2026-10-31T12:00:00Z"))
+        self.assertEqual([(h["slug"], h["s"]) for h in out["a"]["held"]], [("x", 3600), ("y", 3600)])
+        self.assertNotIn("all", crowns)          # nobody has three tracks yet
+
+
 if __name__ == "__main__":
     unittest.main()
