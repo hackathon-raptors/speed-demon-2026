@@ -49,3 +49,14 @@ class Crowns(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FinalPushes(unittest.TestCase):
+    def test_counts_distinct_commits_in_the_last_hour(self):
+        rows = [{"team_slug": "a", "team": "A", "commit": "1", "pushed_at": "2026-11-02T14:10:00Z"},
+                {"team_slug": "a", "team": "A", "commit": "1", "pushed_at": "2026-11-02T14:10:00Z"},
+                {"team_slug": "a", "team": "A", "commit": "2", "pushed_at": "2026-11-02T14:59:59Z"},
+                {"team_slug": "b", "team": "B", "commit": "3", "pushed_at": "2026-11-02T13:59:59Z"},
+                {"team_slug": "c", "team": "C", "commit": "4", "pushed_at": "2026-11-02T15:00:00Z"},
+                {"team_slug": "r", "team": "REF", "commit": "5", "pushed_at": "2026-11-02T14:30:00Z"}]
+        self.assertEqual(tape.final_pushes(rows, "2026-11-02T15:00:00Z", exclude={"REF"}), 2)

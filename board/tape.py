@@ -16,6 +16,7 @@ then by points gained): {"slug", "team", "climb", "gain", "tracks"}.
 crowns follows who held #1 on each track and in Overall since the first score:
   {"a": {"segs": [{"slug", "team", "from"}...], "held": [{"slug", "team", "s"}, top 3 by seconds held]}, ...}
 A segment runs until the next one starts, the last one until generated_at.
+final_pushes counts distinct (team, commit) pushed in the last hour before code freeze (--freeze).
 Run by speeddemon-tape.timer every 10 s, which uploads the file next to board.json.
 
     python3 board/tape.py --history /srv/speeddemon/board/state/history.jsonl \
@@ -124,6 +125,19 @@ def crown_summary(crowns, now, keep=200, top=3):
     return out
 
 
+def final_pushes(rows, freeze, exclude=()):
+    """Distinct (team, commit) pushed in the hour before freeze; feeds the board's freeze-hour counter."""
+    end = _epoch(freeze)
+    seen = set()
+    for r in rows:
+        at = _epoch(r.get("pushed_at") or r.get("recorded_at"))
+        if r.get("team") in exclude or not r.get("team_slug") or at is None or end is None:
+            continue
+        if end - 3600 <= at < end:
+            seen.add((r["team_slug"], r.get("commit")))
+    return len(seen)
+
+
 def climbers(events, now, window_s=3600, top=3):
     """The teams that gained the most track places in new bests within window_s before now."""
     by = {}
@@ -145,6 +159,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--config", help="board.json config, for stats_exclude (the reference baseline)")
     ap.add_argument("--keep", type=int, default=50)
+    ap.add_argument("--freeze", default="2026-11-02T15:00:00Z", help="code freeze, for the final-hour push count")
     a = ap.parse_args()
     exclude = set()
     if a.config:
@@ -161,7 +176,8 @@ def main():
     events = replay(rows, exclude, keep=0, crowns=crowns)
     now = time.time()
     body = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)), "events": events[-a.keep:][::-1],
-            "climbers": climbers(events, now), "crowns": crown_summary(crowns, now)}
+            "climbers": climbers(events, now), "crowns": crown_summary(crowns, now),
+            "final_pushes": final_pushes(rows, a.freeze, exclude)}
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(a.out), prefix=".tape-")
     with os.fdopen(fd, "w") as f:
         json.dump(body, f, separators=(",", ":"))
