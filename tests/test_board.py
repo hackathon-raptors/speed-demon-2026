@@ -709,6 +709,26 @@ class BoardWithoutDockerTest(unittest.TestCase):
             repo.push({"track-a/Dockerfile": REF_DOCKERFILE})
             self.assertEqual(b.poll_once(), [])               # after that, nothing new is seen
 
+    def test_final_poll_takes_the_frozen_pin_not_a_later_push(self):
+        with tempfile.TemporaryDirectory() as root:
+            data = os.path.join(root, "data")
+            os.makedirs(data)
+            tracks = {"a": {"data": data, "output": "summary.txt", "expected_sha256": "0" * 64,
+                            "ref": {"T_s": 1.0, "M_bytes": 1e6, "S": 40, "D": 1}}}
+            pinfile = os.path.join(root, "freeze.json")
+            cfg = board.load_config(write_config(root, tracks, event_ends="2000-01-01T00:00:00Z",
+                                                 freeze_file=pinfile))
+            repo = FakeRepo(root, "late")
+            pinned = repo.push({"track-a/Dockerfile": STOLEN_DOCKERFILE, "track-a/a_ingest.py": "print(1)\n"})
+            repo.push({"track-a/Dockerfile": REF_DOCKERFILE})            # pushed after freeze
+            write_registry(root, [{"team": "Late", "repo": repo.bare, "tracks": ["a"]}])
+            b = board.Board(cfg)
+            self.assertEqual(b.poll_once(), [])                          # no freeze.json yet: wait
+            with open(pinfile, "w") as f:
+                json.dump({"teams": {sources.slugify("Late"): {"commit": pinned, "error": None}}}, f)
+            self.assertEqual(b.poll_once(), [("Late", pinned)])
+            self.assertEqual(b.poll_once(), [])
+
     def test_unchanged_starter_is_reported_not_run(self):
         with tempfile.TemporaryDirectory() as root:
             data = os.path.join(root, "data")

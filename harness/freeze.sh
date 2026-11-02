@@ -34,7 +34,14 @@ done
 say "evidence copied"
 [ "$DRY" = 1 ] && { say "dry run done"; exit 0; }
 
-# Drain: board.py closes its watch at event_ends; queued pre-freeze pushes still run.
+# board.py takes freeze.json in one final poll (within a poll interval), then closes its watch.
+for i in $(seq 1 30); do
+  journalctl -u speeddemon-board --since "$(date -u -d '-10 min' '+%F %T') UTC" --no-pager 2>/dev/null \
+    | grep -q "final poll" && { say "board took the frozen pins, watch closed"; break; }
+  sleep 10
+done
+sleep 10                                   # let the feed show what the final poll queued
+# Drain: queued pre-freeze pushes still run.
 # The 15-minute per-team rule can hold a 14:59 push until ~15:14, so cap at 45 min.
 deadline=$(( $(date +%s) + 2700 ))
 while [ "$(date +%s)" -lt "$deadline" ]; do

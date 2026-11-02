@@ -61,6 +61,7 @@ DEFAULTS = {
     "stats_exclude": [],                          # board entries left out of stats.json (e.g. the reference baseline)
     "event_starts": "2026-10-30T15:00:00Z",       # kickoff and code freeze: the stats' runs-per-hour window
     "event_ends": "2026-11-02T15:00:00Z",
+    "freeze_file": "",                            # freeze.json: the board's last poll takes these pins
     "registry": "/srv/speeddemon/board/registry.json",
     "state_dir": "/srv/speeddemon/board/state",
     "history": "/srv/speeddemon/board/state/history.jsonl",
@@ -494,12 +495,24 @@ class Board:
         closing = ends is not None and time.time() >= ends
         if closing and getattr(self, "_watch_closed", False):
             return []
-        if closing:                     # one last poll at freeze sees pushes from the final minute
-            self._watch_closed = True
-            log.info("code freeze: final poll, then watch closed")
         with self.lock:
             teams = list(self.teams.values())
         results = {}
+        pins = None
+        if closing and self.cfg.get("freeze_file"):
+            # The last poll takes the commits final scoring pinned at freeze, never a later push.
+            # freeze.sh writes the file a few seconds after event_ends: wait for it.
+            try:
+                with open(self.cfg["freeze_file"], encoding="utf-8") as f:
+                    pins = json.load(f)["teams"]
+            except (OSError, ValueError, KeyError):
+                return []
+            results = {t.slug: (pins[t.slug].get("commit") or "", pins[t.slug].get("error") or "")
+                       for t in teams if t.slug in pins}
+            teams = []
+        if closing:
+            self._watch_closed = True
+            log.info("code freeze: final poll (%s), then watch closed", "pinned commits" if pins is not None else "ls-remote")
         with concurrent.futures.ThreadPoolExecutor(max_workers=int(self.cfg["poll_workers"])) as ex:
             futures = {ex.submit(self.git.ls_remote, t.repo, self.cfg["branch"]): t for t in teams}
             for fut in concurrent.futures.as_completed(futures):
