@@ -36,27 +36,54 @@ def now(t=None):
 
 
 class Stream:
+    """Append-only event file. Uploads run on a background thread, coalesced to at most one per second,
+    so the driver never waits on S3 (an upload per log line cost ~30 s per track)."""
     def __init__(self, path, key, upload):
+        import threading
         self.path, self.key, self.upload = path, key, upload
         self.doc = {"generated_at": now(), "events": []}
-        self.flush()
+        self.lock, self.dirty, self.done = threading.Lock(), threading.Event(), False
+        self._write()
+        if upload:
+            self.thread = threading.Thread(target=self._uploader, daemon=True)
+            self.thread.start()
+            self.dirty.set()
 
     def emit(self, **ev):
         ts = ev.pop("ts", None)
         ev = {"type": ev.pop("type"), "at": now(ts), **ev}
-        self.doc["events"].append(ev)
-        self.doc["generated_at"] = ev["at"]
+        with self.lock:
+            self.doc["events"].append(ev)
+            self.doc["generated_at"] = now()
+            self._write()
         print(json.dumps(ev), flush=True)
-        self.flush()
+        self.dirty.set()
 
-    def flush(self):
+    def _write(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self.doc, f)
         os.replace(tmp, self.path)
+
+    def _push(self):
+        snap = self.path + ".up"
+        with self.lock:
+            with open(snap, "w", encoding="utf-8") as f:
+                json.dump(self.doc, f)
+        subprocess.run(["aws", "s3", "cp", snap, f"{BUCKET}/{self.key}", "--content-type",
+                        "application/json", "--only-show-errors"], check=False, timeout=60)
+
+    def _uploader(self):
+        while not self.done:
+            if self.dirty.wait(1.0):
+                self.dirty.clear()
+                self._push()
+                time.sleep(1.0)
+
+    def close(self):
         if self.upload:
-            subprocess.run(["aws", "s3", "cp", self.path, f"{BUCKET}/{self.key}", "--content-type",
-                            "application/json", "--only-show-errors"], check=False, timeout=60)
+            self.done = True
+            self._push()
 
 
 class DockerWatch:
@@ -271,6 +298,7 @@ def main():
             print(f"closing reference {tr} failed: {exc}", file=sys.stderr)
             drift[tr] = None
     out.emit(type="drift", tracks=drift)
+    out.close()
 
 
 if __name__ == "__main__":
