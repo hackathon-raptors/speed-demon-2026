@@ -705,10 +705,9 @@ class BoardWithoutDockerTest(unittest.TestCase):
             repo.push({"track-a/Dockerfile": STOLEN_DOCKERFILE, "track-a/a_ingest.py": "print(1)\n"})
             write_registry(root, [{"team": "Late", "repo": repo.bare, "tracks": ["a"]}])
             b = board.Board(cfg)
-            self.assertEqual(b.poll_once(), [])
-            self.assertEqual(b.poll_once(), [])
-            b.run_until_idle(max_seconds=10)
-            self.assertEqual(b.history.snapshot(), [])
+            self.assertEqual(len(b.poll_once()), 1)           # the final poll at freeze still sees it
+            repo.push({"track-a/Dockerfile": REF_DOCKERFILE})
+            self.assertEqual(b.poll_once(), [])               # after that, nothing new is seen
 
     def test_unchanged_starter_is_reported_not_run(self):
         with tempfile.TemporaryDirectory() as root:

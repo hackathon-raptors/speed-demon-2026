@@ -491,11 +491,12 @@ class Board:
         # freeze still gets its board run. Final scoring pins its own commits (freeze.json).
         self.load_registry()
         ends = epoch(self.cfg.get("event_ends"))
-        if ends is not None and time.time() >= ends:
-            if not getattr(self, "_watch_closed", False):
-                self._watch_closed = True
-                log.info("code freeze: watch closed")
+        closing = ends is not None and time.time() >= ends
+        if closing and getattr(self, "_watch_closed", False):
             return []
+        if closing:                     # one last poll at freeze sees pushes from the final minute
+            self._watch_closed = True
+            log.info("code freeze: final poll, then watch closed")
         with self.lock:
             teams = list(self.teams.values())
         results = {}
