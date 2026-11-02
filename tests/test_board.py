@@ -611,7 +611,7 @@ def write_config(root, tracks, **extra):
         "feed": "public/board.json", "checkouts": "checkouts", "work": "work", "timer": timer,
         "cgroups": "host", "allow_local_repos": True, "poll_interval_s": 1, "min_interval_s": 900,
         "builder": {"name": ""}, "disk": {"paths": [root], "min_free_gb": 0, "resume_free_gb": 0},
-        "tracks": tracks,
+        "tracks": tracks, "event_ends": "2099-01-01T00:00:00Z",
     }
     board.deep_merge(cfg, extra)
     path = os.path.join(root, "board.json")
@@ -693,6 +693,22 @@ class BoardWithoutDockerTest(unittest.TestCase):
             self.assertGreater(board.epoch(queued["eligible_at"]), time.time() + 800)
             self.assertEqual(feed["teams"][0]["tracks"]["a"]["latest"]["stage"], "check")
             self.assertNotIn("b#1", json.dumps(feed))
+
+    def test_no_new_pushes_after_code_freeze(self):
+        with tempfile.TemporaryDirectory() as root:
+            data = os.path.join(root, "data")
+            os.makedirs(data)
+            tracks = {"a": {"data": data, "output": "summary.txt", "expected_sha256": "0" * 64,
+                            "ref": {"T_s": 1.0, "M_bytes": 1e6, "S": 40, "D": 1}}}
+            cfg = board.load_config(write_config(root, tracks, event_ends="2000-01-01T00:00:00Z"))
+            repo = FakeRepo(root, "late")
+            repo.push({"track-a/Dockerfile": STOLEN_DOCKERFILE, "track-a/a_ingest.py": "print(1)\n"})
+            write_registry(root, [{"team": "Late", "repo": repo.bare, "tracks": ["a"]}])
+            b = board.Board(cfg)
+            self.assertEqual(b.poll_once(), [])
+            self.assertEqual(b.poll_once(), [])
+            b.run_until_idle(max_seconds=10)
+            self.assertEqual(b.history.snapshot(), [])
 
     def test_unchanged_starter_is_reported_not_run(self):
         with tempfile.TemporaryDirectory() as root:

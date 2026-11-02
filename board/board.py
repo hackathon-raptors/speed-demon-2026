@@ -487,7 +487,15 @@ class Board:
             self.stopping.wait(self.cfg["poll_interval_s"])
 
     def poll_once(self):
+        # Code freeze: stop seeing pushes, but let the queue drain, so a push made before the
+        # freeze still gets its board run. Final scoring pins its own commits (freeze.json).
         self.load_registry()
+        ends = epoch(self.cfg.get("event_ends"))
+        if ends is not None and time.time() >= ends:
+            if not getattr(self, "_watch_closed", False):
+                self._watch_closed = True
+                log.info("code freeze: watch closed")
+            return []
         with self.lock:
             teams = list(self.teams.values())
         results = {}

@@ -15,6 +15,7 @@ clocks) rather than emit numbers from a drifting box. K is anchored to the refer
 holdout. This is the MACHINE side only; judge scores (0.35) and blended totals combine after judging.
 """
 import argparse
+import concurrent.futures
 import json
 import os
 import shutil
@@ -200,13 +201,20 @@ def snapshot_cmd(args):
     for p in problems:
         print(f"registry: {p}", file=sys.stderr)
     git = make_git(args)
-    frozen = {}
-    for team in teams:
+    started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    def pin(team):                                      # parallel: the whole field in seconds, not minutes
         sha, err = git.ls_remote(team.repo, BRANCH)
-        frozen[team.slug] = {"name": team.name, "repo": team.repo, "tracks": team.tracks,
-                             "commit": sha, "error": err or None}
-        print(f"{'  ok' if sha else 'MISS'}  {team.name}: {sha[:12] or err}")
-    out = {"captured_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "branch": BRANCH, "teams": frozen}
+        return team, sha, err, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    frozen = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+        for team, sha, err, at in ex.map(pin, teams):
+            frozen[team.slug] = {"name": team.name, "repo": team.repo, "tracks": team.tracks,
+                                 "commit": sha, "error": err or None, "pinned_at": at}
+            print(f"{'  ok' if sha else 'MISS'}  {team.name}: {sha[:12] or err}")
+    out = {"started_at": started, "captured_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "branch": BRANCH, "teams": frozen}
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2)
     missing = [s for s, v in frozen.items() if not v["commit"]]
